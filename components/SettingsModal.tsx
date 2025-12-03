@@ -383,7 +383,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500"
                      />
                      <div className="text-xs text-slate-400 mt-1 flex flex-wrap gap-2">
-                         {aiSettings.provider === 'gemini' && <a href="https://aistudiocdn.com/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Google API Key</a>}
+                         {aiSettings.provider === 'gemini' && <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Google API Key</a>}
                          {aiSettings.provider === 'deepseek' && <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 DeepSeek Key</a>}
                          {aiSettings.provider === 'moonshot' && <a href="https://platform.moonshot.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Moonshot Key</a>}
                          {aiSettings.provider === 'siliconflow' && <a href="https://cloud.siliconflow.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取硅基流动 Key (含免费)</a>}
