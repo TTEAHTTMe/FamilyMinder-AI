@@ -103,7 +103,6 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                   interimTranscript += result[0].transcript;
               }
           }
-          
           const textToShow = finalTranscript || interimTranscript;
           if (textToShow) setInterimText(textToShow);
       };
@@ -120,15 +119,29 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       };
 
       recognition.onend = () => {
-          // Manually handled via stop button to avoid UI flickering
+          // Controlled manually
       };
 
       try {
           recognition.start();
           recognitionRef.current = recognition;
       } catch (e) {
+          console.error(e);
           setIsListening(false);
-          alert("无法启动麦克风，请刷新页面重试。");
+          try {
+              stopRecognitionInstance();
+              setTimeout(() => {
+                 try {
+                     const retryRec = new SpeechRecognition();
+                     retryRec.lang = 'zh-CN';
+                     retryRec.start();
+                     recognitionRef.current = retryRec;
+                     setIsListening(true);
+                 } catch(err) {}
+              }, 100);
+          } catch (retryErr) {
+              alert("无法启动麦克风，请刷新页面重试。");
+          }
       }
   };
 
@@ -160,7 +173,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   };
 
   const speakText = (text: string) => {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
         const msg = new SpeechSynthesisUtterance();
         msg.text = text;
@@ -171,7 +184,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
             if (voice) msg.voice = voice;
         }
         window.speechSynthesis.speak(msg);
-      }
+    }
   };
 
   const handleUserSpeechComplete = async (text: string) => {
@@ -189,7 +202,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           }
 
           const familyNames = allUsers.map(u => u.name);
-          const todayStr = getTodayString(); // Use Local Date
+          const todayStr = getTodayString();
 
           console.log("Sending to AI...", text);
 
@@ -203,49 +216,54 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           );
 
           if (result) {
-              if (result.action === 'create_reminder' && result.reminderData) {
-                  // --- CASE 1: CREATE REMINDER ---
-                  const rData = result.reminderData;
+              // --- SCENARIO 1: CREATE REMINDER ---
+              if (result.action === 'create_reminder' && result.reminder) {
                   let targetUserId = curUser.id;
                   
-                  if (rData.targetUser) {
-                      const exactMatch = allUsers.find(u => u.name === rData.targetUser);
+                  // Logic to map string name to ID
+                  if (result.reminder.targetUser) {
+                      const exactMatch = allUsers.find(u => u.name === result.reminder!.targetUser);
                       if (exactMatch) targetUserId = exactMatch.id;
                       else {
-                          const found = allUsers.find(u => rData.targetUser!.includes(u.name));
+                          const found = allUsers.find(u => result.reminder!.targetUser!.includes(u.name));
                           if (found) targetUserId = found.id;
                       }
+                  } else if (curUser.id === 'all') {
+                      // Should be handled by AI prompt, but fallback just in case
+                      throw new Error("请指明这个提醒是给谁的？");
                   }
                   
                   const targetUserObj = allUsers.find(u => u.id === targetUserId) || curUser;
 
                   onAddReminder({
-                      title: rData.title,
-                      time: rData.time,
-                      date: rData.date,
+                      title: result.reminder.title,
+                      time: result.reminder.time,
+                      date: result.reminder.date,
                       userId: targetUserId,
-                      type: rData.type,
+                      type: result.reminder.type,
                       isCompleted: false
                   });
 
-                  addMessage('assistant', '已为您添加提醒：', 'success-card', { ...rData, targetUserName: targetUserObj.name });
-                  speakText(`好的，已添加提醒。`);
-
-              } else if (result.action === 'chat_response' && result.replyText) {
-                  // --- CASE 2: CHAT RESPONSE ---
+                  addMessage('assistant', '已为您添加提醒：', 'success-card', { ...result.reminder, targetUserName: targetUserObj.name });
+                  speakText("好的，已添加提醒。");
+              
+              } 
+              // --- SCENARIO 2: CHAT RESPONSE ---
+              else if (result.action === 'chat_response' && result.replyText) {
                   addMessage('assistant', result.replyText);
                   speakText(result.replyText);
               } else {
-                  throw new Error("AI 返回了无法理解的指令");
+                   throw new Error("AI 返回了无法理解的数据");
               }
 
           } else {
-              throw new Error("AI 返回了空内容");
+              throw new Error("AI 返回了空内容，请重试");
           }
 
       } catch (e: any) {
           console.error("AI Process Error:", e);
-          addMessage('assistant', `抱歉，无法解析：${e.message}`, 'error');
+          addMessage('assistant', `抱歉：${e.message}`, 'error');
+          speakText(`抱歉，${e.message}`);
       } finally {
           setIsProcessing(false);
       }
@@ -269,7 +287,6 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 
   return (
     <>
-        {/* Floating Bar */}
         {!isOpen && (
              <div className="fixed bottom-6 left-0 right-0 flex justify-center z-40 px-4 pointer-events-none">
                 <div className="w-full max-w-sm flex items-end gap-3 pointer-events-auto">
@@ -290,10 +307,10 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
              </div>
         )}
 
-        {/* Chat Interface */}
         {isOpen && (
             <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
                 <div className="bg-slate-100 w-full md:w-[500px] h-[90vh] md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative">
+                    
                     {/* Header */}
                     <div className="bg-white px-4 py-3 shadow-sm flex items-center justify-between flex-shrink-0 z-10 border-b border-slate-100">
                         <div className="flex items-center gap-2">
@@ -328,8 +345,11 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                         {messages.map(msg => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 {msg.role === 'assistant' && (
-                                    <div className="w-8 h-8 rounded-full bg-blue-500 flex-shrink-0 flex items-center justify-center text-white text-xs mr-2 mt-1">AI</div>
+                                    <div className="w-8 h-8 rounded-full bg-blue-500 flex-shrink-0 flex items-center justify-center text-white text-xs mr-2 mt-1">
+                                        AI
+                                    </div>
                                 )}
+
                                 <div className={`max-w-[85%] space-y-2`}>
                                     {msg.text && (
                                         <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm
@@ -340,6 +360,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                                             {msg.text}
                                         </div>
                                     )}
+
                                     {msg.type === 'success-card' && msg.data && (
                                         <div className="bg-white rounded-2xl p-4 shadow-md border-l-4 border-green-500 overflow-hidden animate-scale-in">
                                             <div className="flex justify-between items-start mb-2">
@@ -372,15 +393,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                         {isListening && (
                             <div className="flex justify-end">
                                 <div className="bg-blue-500/10 border border-blue-500/20 text-blue-700 px-4 py-3 rounded-2xl rounded-br-none max-w-[85%] animate-pulse">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <div className="flex gap-1">
-                                            <div className="w-1 h-3 bg-blue-500 rounded-full animate-bounce"></div>
-                                            <div className="w-1 h-3 bg-blue-500 rounded-full animate-bounce delay-75"></div>
-                                            <div className="w-1 h-3 bg-blue-500 rounded-full animate-bounce delay-150"></div>
-                                        </div>
-                                        <span className="text-xs font-bold">正在听...</span>
-                                    </div>
-                                    <span className="text-sm font-medium">{interimText || "请说话..."}</span>
+                                    <span className="text-sm font-medium">{interimText || "正在听..."}</span>
                                 </div>
                             </div>
                         )}
@@ -390,19 +403,18 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                                 <div className="w-8 h-8 mr-2"></div>
                                 <div className="bg-white text-slate-500 px-4 py-3 rounded-2xl rounded-bl-none text-xs flex items-center gap-2 shadow-sm">
                                     <i className="fa-solid fa-circle-notch fa-spin text-blue-500"></i>
-                                    正在思考并解析...
+                                    正在思考...
                                 </div>
                              </div>
                         )}
                         <div ref={chatEndRef}></div>
                     </div>
 
-                    {/* Bottom Input */}
+                    {/* Bottom Input Area */}
                     <div className="p-3 bg-white border-t border-slate-100 flex items-end gap-3 flex-shrink-0 pb-8 md:pb-6">
                         <button 
                              onClick={() => { toggleAssistant(); onManualInput(); }}
                              className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0"
-                             title="切换填表模式"
                         >
                             <i className="fa-solid fa-list-check text-lg"></i>
                         </button>

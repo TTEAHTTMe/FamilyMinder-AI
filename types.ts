@@ -18,8 +18,7 @@ export interface Reminder {
   snoozeUntil?: number; // Timestamp
 }
 
-// Old interface kept for compatibility but wrapped in AIResponse
-export interface ParsedReminderData {
+export interface ParsedReminder {
   title: string;
   time: string;
   date: string; // Format: "YYYY-MM-DD"
@@ -27,13 +26,11 @@ export interface ParsedReminderData {
   type: 'medication' | 'general' | 'activity';
 }
 
-// New Smart Response Structure
-export type AIActionType = 'create_reminder' | 'chat_response';
-
+// New Interface for Smart Intent Response
 export interface AIResponse {
-  action: AIActionType;
-  reminderData?: ParsedReminderData; // Present if action is 'create_reminder'
-  replyText?: string; // Present if action is 'chat_response'
+  action: 'create_reminder' | 'chat_response';
+  reminder?: ParsedReminder; // Only present if action is create_reminder
+  replyText?: string;       // Only present if action is chat_response
 }
 
 export interface VoiceSettings {
@@ -60,7 +57,7 @@ export interface AISettings {
 
 export interface CloudSettings {
   apiKey: string; // X-Access-Key
-  binId: string;
+  binId: string; // Bin ID
   autoSyncEnabled: boolean;
   autoSyncInterval: number; // in minutes
   lastAutoSync?: number; // timestamp

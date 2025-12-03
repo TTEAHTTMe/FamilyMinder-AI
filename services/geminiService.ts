@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, AIConfig } from "../types";
 
@@ -32,7 +31,7 @@ const extractJsonFromText = (text: string): AIResponse => {
         // Fall through
     }
 
-    throw new Error(`无法从 AI 回复中提取 JSON。原始回复: ${text.substring(0, 100)}...`);
+    throw new Error(`无法从 AI 回复中提取有效 JSON。原始回复: ${text.substring(0, 100)}...`);
 };
 
 // Helper for OpenAI-compatible APIs
@@ -48,6 +47,7 @@ const callOpenAICompatible = async (
 
     try {
         const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        
         console.log(`Calling AI: ${model} at ${cleanUrl}`);
 
         const response = await fetch(`${cleanUrl}/chat/completions`, {
@@ -97,10 +97,10 @@ const callOpenAICompatible = async (
 export const parseReminderWithGemini = async (
     text: string, 
     currentUserName: string, 
-    validUserNames: string[], 
-    referenceDate: string,
+    validUserNames?: string[], 
+    referenceDate?: string,
     aiConfig?: AIConfig,
-    providerType?: string // 'gemini' | others
+    providerType?: string
 ): Promise<AIResponse | null> => {
 
   if (!aiConfig || (!aiConfig.apiKey && providerType !== 'custom')) {
@@ -108,42 +108,49 @@ export const parseReminderWithGemini = async (
   }
 
   const todayStr = referenceDate || new Date().toISOString().split('T')[0];
-  const validNamesStr = validUserNames.length > 0 ? `Valid family members: ${validUserNames.join(', ')}.` : '';
-  const isHomeMode = currentUserName === '全家人';
+  const validNamesStr = validUserNames ? validUserNames.join(', ') : '';
+  
+  // Logic to determine if we are in "Home Mode" (generic context) or "User Mode"
+  const isHomeContext = currentUserName === '全家人' || currentUserName === 'all';
 
   const systemPrompt = `
       You are a smart family assistant. Your job is to classify the user's intent and return a JSON object.
       
       Context:
-      - Current Date: ${todayStr}
-      - Current View Mode User: "${currentUserName}" (If "全家人", it means Home View/All Family).
-      - ${validNamesStr}
+      - Current User View: "${currentUserName}"
+      - Valid Family Members: [${validNamesStr}]
+      - Today's Date: ${todayStr}
       
-      TASK 1: CLASSIFY INTENT
-      - IF the user wants to set a reminder/alarm/task (e.g., "Remind dad to eat", "Wake me up at 8"):
-        -> Set "action": "create_reminder"
-      - IF the user input is casual chat (e.g., "Hello", "How are you"), gibberish, or just partial text without intent:
-        -> Set "action": "chat_response"
-        -> Set "replyText": A friendly, short conversational reply in Chinese.
-      - IF the intent is ambiguous (e.g. user says "Eat medicine" BUT Current View is "全家人" and no specific name is mentioned):
-        -> Set "action": "chat_response"
-        -> Set "replyText": "请问是提醒哪位家庭成员？" (Ask for clarification).
-
-      TASK 2: EXTRACT DATA (Only if action is "create_reminder")
-      - "reminderData": {
-          "title": "Content of reminder",
-          "time": "HH:mm" (24-hour, default to now+5mins if unspecified),
-          "date": "YYYY-MM-DD" (Default to ${todayStr}),
-          "targetUser": "Name of person" (If not mentioned, default to "${currentUserName}". If "${currentUserName}" is "全家人", you MUST have asked for clarification in step 1, unless you can infer it contextually, otherwise default to first valid member or ask),
+      Task:
+      Analyze the input: "${text}"
+      
+      Scenario A: USER WANTS TO CREATE A REMINDER
+      If the user clearly asks to set a reminder (e.g., "Remind Dad to eat pills", "Call me at 8"), return:
+      {
+        "action": "create_reminder",
+        "reminder": {
+          "title": "Short title",
+          "time": "HH:mm" (24h, default to now+5min),
+          "date": "YYYY-MM-DD" (default to ${todayStr}),
+          "targetUser": "Name" (see rules below),
           "type": "medication" | "general" | "activity"
+        }
+      }
+      
+      Scenario B: CASUAL CHAT or AMBIGUOUS INPUT
+      If the user says "Hello", "How are you", or provides incomplete info that makes creating a reminder impossible/dangerous, return:
+      {
+        "action": "chat_response",
+        "replyText": "Your helpful reply here in Chinese"
       }
 
-      IMPORTANT: Return ONLY the JSON object.
-      Example 1 (Reminder):
-      { "action": "create_reminder", "reminderData": { "title": "吃苹果", "time": "14:00", "date": "${todayStr}", "targetUser": "爷爷", "type": "general" } }
-      
-      Example 2 (Chat):
-      { "action": "chat_response", "replyText": "你好！我是家庭助手，请告诉我需要提醒什么？" }
+      CRITICAL RULES FOR "targetUser":
+      1. If a valid family member name is mentioned in the text, ALWAYS use it.
+      2. If NO name is mentioned:
+         - If Current User View is a specific person (not "全家人"), default to that person.
+         - If Current User View is "全家人" (Home Mode), YOU MUST NOT GUESS. Return "action": "chat_response" and ask: "请问这个提醒是给谁的？" (Who is this for?).
+
+      IMPORTANT: Return ONLY the JSON object. No markdown.
       `;
   
   // --- OPENAI COMPATIBLE PROVIDERS ---
@@ -163,14 +170,32 @@ export const parseReminderWithGemini = async (
     const response = await ai.models.generateContent({
       model: aiConfig.model || "gemini-2.5-flash",
       contents: `${systemPrompt}
-      User Input: "${text}"`,
+      Input: "${text}"`,
       config: {
         responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            action: { type: Type.STRING, enum: ["create_reminder", "chat_response"] },
+            reminder: {
+               type: Type.OBJECT,
+               properties: {
+                 title: { type: Type.STRING },
+                 time: { type: Type.STRING },
+                 date: { type: Type.STRING },
+                 targetUser: { type: Type.STRING },
+                 type: { type: Type.STRING }
+               }
+            },
+            replyText: { type: Type.STRING }
+          },
+          required: ["action"]
+        }
       }
     });
 
     if (response.text) {
-      return extractJsonFromText(response.text);
+      return JSON.parse(response.text) as AIResponse;
     }
     return null;
 
