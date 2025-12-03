@@ -67,12 +67,20 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   };
 
   const startListening = () => {
+      // 1. Cleanup old instance
       stopRecognitionInstance();
 
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      // Safety check if browser really supports it (sometimes flags are present but broken)
+      if (!SpeechRecognition) {
+          alert("您的浏览器不支持语音识别 API。");
+          return;
+      }
+
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = false;
+      recognition.continuous = true; // Changed to true to keep listening until user presses stop
       recognition.lang = 'zh-CN';
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
@@ -97,35 +105,26 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
               }
           }
           
-          if (interimTranscript) setInterimText(interimTranscript);
-
-          if (finalTranscript) {
-              setInterimText(''); // Clear interim
-              handleUserSpeechComplete(finalTranscript);
-              try { recognition.stop(); } catch(e) {}
-          }
+          // Force update UI with whatever we have
+          const textToShow = finalTranscript || interimTranscript;
+          if (textToShow) setInterimText(textToShow);
       };
 
       recognition.onerror = (event: any) => {
           console.error("Speech Error:", event.error);
-          setIsListening(false);
-          setInterimText('');
-          
-          let errorMsg = '';
+          // Only alert on fatal errors, ignore 'no-speech' as we handle it manually on stop
           if (event.error === 'not-allowed') {
-              errorMsg = '无法访问麦克风，请检查权限。';
+              setIsListening(false);
+              alert('无法访问麦克风，请检查权限。');
           } else if (event.error === 'network') {
-              errorMsg = '网络连接异常，无法进行语音识别。';
-          } else if (event.error === 'no-speech') {
-               // Ignore no-speech, just stop listening visually
-               return; 
+               setIsListening(false);
+               alert('网络连接异常，无法进行语音识别。');
           }
-          
-          if (errorMsg) alert(errorMsg);
       };
 
       recognition.onend = () => {
-          setIsListening(false);
+          // Do nothing here. We control the stop logic manually via the button.
+          // This prevents the UI from flickering if the engine restarts or pauses.
       };
 
       try {
@@ -134,21 +133,42 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       } catch (e) {
           console.error(e);
           setIsListening(false);
-          alert("无法启动麦克风，请刷新页面重试。");
+          // Attempt to handle the "already started" bug by aborting and retrying once
+          try {
+              stopRecognitionInstance();
+              setTimeout(() => {
+                 try {
+                     const retryRec = new SpeechRecognition();
+                     retryRec.lang = 'zh-CN';
+                     retryRec.start();
+                     recognitionRef.current = retryRec;
+                     setIsListening(true);
+                 } catch(err) {
+                     alert("无法启动麦克风 (错误: 重复启动)，请刷新页面。");
+                 }
+              }, 100);
+          } catch (retryErr) {
+              alert("无法启动麦克风，请刷新页面重试。");
+          }
       }
   };
 
   const stopListening = () => {
-      if (recognitionRef.current) {
-          try { recognitionRef.current.stop(); } catch(e) {}
-      }
+      // 1. Force stop the engine
+      stopRecognitionInstance();
       setIsListening(false);
       
-      // If there was text remaining in interim (force submit)
-      if (interimText.trim()) {
-          const text = interimText;
-          setInterimText('');
-          handleUserSpeechComplete(text);
+      // 2. Capture what was on screen
+      const textCaptured = interimText.trim();
+      setInterimText(''); // Clear interim display
+
+      // 3. Decide what to do
+      if (textCaptured) {
+          // If we heard something, process it
+          handleUserSpeechComplete(textCaptured);
+      } else {
+          // If we heard NOTHING, show a feedback bubble
+          addMessage('assistant', '🔇 抱歉，我没有听到声音。\n可能是网络原因或麦克风未收音。', 'error');
       }
   };
 
