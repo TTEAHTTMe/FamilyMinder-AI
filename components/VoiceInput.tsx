@@ -13,68 +13,73 @@ interface VoiceInputProps {
   aiSettings: AISettings;
 }
 
+interface ChatMessage {
+  id: number;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+  type?: 'text' | 'success-card' | 'error';
+  data?: any; // Store parsed reminder data for the success card
+}
+
 const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddReminder, onManualInput, voiceSettings, aiSettings }) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [interimText, setInterimText] = useState(''); // Text currently being spoken
+  const [messages, setMessages] = useState<ChatMessage[]>([
+      { id: 0, role: 'assistant', text: '我是您的家庭智能助手。请告诉我需要提醒什么？\n例如：“明天早上8点提醒爷爷吃药”' }
+  ]);
   const [hasSpeechSupport, setHasSpeechSupport] = useState(false);
   
-  // We store the active recognition instance here
   const recognitionRef = useRef<any>(null);
-  // Keep track of the transcript in a ref for immediate access during event callbacks/stop
-  const transcriptRef = useRef('');
-
-  // Use refs to store latest props to avoid stale closures in callbacks
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Latest props ref to avoid stale closures
   const latestPropsRef = useRef({ currentUser, users, aiSettings, voiceSettings });
-
   useEffect(() => {
     latestPropsRef.current = { currentUser, users, aiSettings, voiceSettings };
   }, [currentUser, users, aiSettings, voiceSettings]);
 
-  // Sync transcript state to ref
+  // Auto-scroll to bottom of chat
   useEffect(() => {
-      transcriptRef.current = transcript;
-  }, [transcript]);
+    if (chatEndRef.current) {
+        chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, interimText, isOpen]);
 
-  // Check support on mount
+  // Check support
   useEffect(() => {
     if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       setHasSpeechSupport(true);
-    } else {
-      setHasSpeechSupport(false);
     }
-    
-    // Cleanup on unmount
-    return () => {
-        if (recognitionRef.current) {
-            try { recognitionRef.current.abort(); } catch(e) {}
-        }
-    };
+    return () => stopRecognitionInstance();
   }, []);
 
-  const activeConfig = aiSettings?.configs?.[aiSettings?.activeProvider] || aiSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
-
-  const startListening = () => {
-      // 1. Cleanup old instance if exists
+  const stopRecognitionInstance = () => {
       if (recognitionRef.current) {
           try { recognitionRef.current.abort(); } catch(e) {}
           recognitionRef.current = null;
       }
+  };
 
-      // 2. Create NEW instance
+  const addMessage = (role: 'user' | 'assistant' | 'system', text: string, type: 'text' | 'success-card' | 'error' = 'text', data?: any) => {
+      setMessages(prev => [...prev, { id: Date.now(), role, text, type, data }]);
+  };
+
+  const startListening = () => {
+      stopRecognitionInstance();
+
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = false; // Mobile prefers false for short commands
+      recognition.continuous = false;
       recognition.lang = 'zh-CN';
-      recognition.interimResults = true; // CRITICAL: Allows seeing words as they are spoken
+      recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      // 3. Setup Listeners
       recognition.onstart = () => {
           setIsListening(true);
-          setTranscript('');
-          transcriptRef.current = '';
+          setInterimText('');
       };
 
       recognition.onresult = (event: any) => {
@@ -89,265 +94,286 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                   interimTranscript += result[0].transcript;
               }
           }
-
-          // Force UI update immediately with whatever we have
-          const displayDetails = finalTranscript || interimTranscript;
-          if (displayDetails) {
-              setTranscript(displayDetails);
-          }
+          
+          if (interimTranscript) setInterimText(interimTranscript);
 
           if (finalTranscript) {
-              // We got the final sentence
-              // Stop recognition to prevent duplicates, but logic continues in handleAIProcess
+              setInterimText(''); // Clear interim
+              handleUserSpeechComplete(finalTranscript);
               try { recognition.stop(); } catch(e) {}
-              setIsListening(false);
-              handleAIProcess(finalTranscript);
           }
       };
 
       recognition.onerror = (event: any) => {
-          console.error('Speech recognition error', event.error);
-          
-          if (event.error === 'no-speech') {
-              setIsListening(false);
-              return;
-          }
-          if (event.error === 'aborted') {
-              setIsListening(false);
-              return;
-          }
-
+          console.error("Speech Error:", event.error);
           setIsListening(false);
-          
+          setInterimText('');
           if (event.error === 'not-allowed') {
-              alert("无法访问麦克风。请检查浏览器权限设置 (需 HTTPS)。");
-          } else if (event.error === 'network') {
-              alert("网络错误。请检查您的网络连接。");
+              addMessage('system', '无法访问麦克风，请检查权限。', 'error');
+          } else if (event.error !== 'no-speech' && event.error !== 'aborted') {
+              // Ignore benign errors
+              // addMessage('system', '听不清楚，请再说一次。', 'error');
           }
       };
 
       recognition.onend = () => {
-          // Only turn off listening flag. 
-          // Do NOT clear transcript here, so user can see it while processing.
-          if (!isProcessing) {
-             setIsListening(false);
-          }
+          setIsListening(false);
       };
 
-      // 4. Start
       try {
           recognition.start();
           recognitionRef.current = recognition;
-      } catch (e: any) {
-          console.error("Start error", e);
+      } catch (e) {
+          console.error(e);
           setIsListening(false);
-          if (e.message && e.message.includes('already started')) {
-              try { recognition.stop(); } catch(z) {}
-          } else {
-              alert("无法启动麦克风: " + e.message);
-          }
       }
   };
 
   const stopListening = () => {
-      // Immediate UI feedback
-      setIsListening(false); 
-      
       if (recognitionRef.current) {
-          try { 
-              recognitionRef.current.stop(); 
-          } catch (e) {
-              console.error("Stop error", e);
-          }
+          try { recognitionRef.current.stop(); } catch(e) {}
       }
-
-      // CRITICAL FIX: Manually trigger AI with whatever text we have captured so far.
-      // Do not wait for 'onend' or 'isFinal', as mobile browsers are flaky with those.
-      const currentText = transcriptRef.current;
-      if (currentText && !isProcessing) {
-          handleAIProcess(currentText);
-      }
-  };
-
-  const toggleListening = () => {
-    // Haptic
-    if (navigator.vibrate) navigator.vibrate(50);
-
-    // Checks
-    if (!activeConfig.apiKey && aiSettings?.activeProvider !== 'custom') {
-        alert(`请先在设置中配置 ${aiSettings?.activeProvider || 'AI'} 的 API Key`);
-        return;
-    }
-    
-    if (!hasSpeechSupport) {
-        alert("当前浏览器不支持语音识别。\n建议使用 Chrome, Safari, Edge 浏览器。");
-        return;
-    }
-
-    if (isListening) {
-        stopListening();
-    } else {
-        startListening();
-    }
-  };
-
-  const handleAIProcess = async (text: string) => {
-    // Prevent double submission
-    if (isProcessing) return;
-    if (!text.trim()) return;
-
-    setIsProcessing(true);
-    
-    // NOTE: We do NOT clear transcript here. We keep it visible so user sees what is being processed.
-
-    try {
-      const { currentUser: curUser, users: allUsers, aiSettings: curSettings, voiceSettings: curVoice } = latestPropsRef.current;
-      const curConfig = curSettings?.configs?.[curSettings?.activeProvider] || curSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
-
-      const familyNames = allUsers.map(u => u.name);
-      // Use local date for relative date calculation
-      const todayStr = getTodayString();
+      setIsListening(false);
       
-      const result = await parseReminderWithGemini(
-          text, 
-          curUser.name, 
-          familyNames, 
-          todayStr, 
-          curConfig, 
-          curSettings.activeProvider
-      );
-
-      if (result) {
-        let targetUserId = curUser.id;
-        if (result.targetUser) {
-           const exactMatch = allUsers.find(u => u.name === result.targetUser);
-           if (exactMatch) {
-               targetUserId = exactMatch.id;
-           } else {
-               const found = allUsers.find(u => result.targetUser!.includes(u.name));
-               if (found) targetUserId = found.id;
-           }
-        }
-
-        const targetUser = allUsers.find(u => u.id === targetUserId) || curUser;
-
-        onAddReminder({
-          title: result.title,
-          time: result.time,
-          date: result.date,
-          userId: targetUserId,
-          type: result.type,
-          isCompleted: false
-        });
-        
-        // Clear transcript only on success
-        setTranscript('');
-
-        // Audio feedback
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-            const msg = new SpeechSynthesisUtterance();
-            msg.text = `已为${targetUser.name}添加：${result.date === todayStr ? '' : result.date} ${result.time} ${result.title}`;
-            msg.lang = 'zh-CN';
-            msg.rate = curVoice.rate;
-            msg.pitch = curVoice.pitch;
-            msg.volume = curVoice.volume;
-            if (curVoice.voiceURI) {
-                const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === curVoice.voiceURI);
-                if (voice) msg.voice = voice;
-            }
-            window.speechSynthesis.speak(msg);
-        }
-      } else {
-          throw new Error("AI 返回了空结果");
+      // If there was text remaining in interim (force submit)
+      if (interimText.trim()) {
+          const text = interimText;
+          setInterimText('');
+          handleUserSpeechComplete(text);
       }
-    } catch (e: any) {
-      console.error("AI Logic Failed:", e);
-      alert(`AI 解析失败: ${e.message}\n请检查 API Key 或网络连接。`);
-      // On error, we keep the transcript so user can try again or see what failed
-    } finally {
-      setIsProcessing(false);
-      // If success, transcript is already cleared. If failed, it remains.
-      // If we want to auto-clear on error after a while, we could do it here, but keeping it is better.
-      // For now, let's allow user to try again, but maybe we should clear if it was successful.
-      // Actually, let's clear it in the 'catch' block? No, keep it.
-      // Let's clear it if processing is done successfully (logic above).
-    }
+  };
+
+  const handleUserSpeechComplete = async (text: string) => {
+      if (!text.trim()) return;
+      
+      // 1. Add User Message to Chat
+      addMessage('user', text);
+
+      // 2. Process
+      setIsProcessing(true);
+      
+      try {
+          const { currentUser: curUser, users: allUsers, aiSettings: curSettings, voiceSettings: curVoice } = latestPropsRef.current;
+          
+          if (!curSettings.configs[curSettings.activeProvider]?.apiKey && curSettings.activeProvider !== 'custom') {
+              throw new Error(`请先配置 ${curSettings.activeProvider} 的 API Key`);
+          }
+
+          const familyNames = allUsers.map(u => u.name);
+          const todayStr = getTodayString();
+
+          const result = await parseReminderWithGemini(
+              text,
+              curUser.name,
+              familyNames,
+              todayStr,
+              curSettings.configs[curSettings.activeProvider],
+              curSettings.activeProvider
+          );
+
+          if (result) {
+              // Determine Target User
+              let targetUserId = curUser.id;
+              if (result.targetUser) {
+                  const exactMatch = allUsers.find(u => u.name === result.targetUser);
+                  if (exactMatch) targetUserId = exactMatch.id;
+                  else {
+                      const found = allUsers.find(u => result.targetUser!.includes(u.name));
+                      if (found) targetUserId = found.id;
+                  }
+              }
+              
+              const targetUserObj = allUsers.find(u => u.id === targetUserId) || curUser;
+
+              // Add to App State
+              onAddReminder({
+                  title: result.title,
+                  time: result.time,
+                  date: result.date,
+                  userId: targetUserId,
+                  type: result.type,
+                  isCompleted: false
+              });
+
+              // Add Success Message to Chat
+              addMessage('assistant', '已为您添加提醒：', 'success-card', { ...result, targetUserName: targetUserObj.name });
+
+              // Audio Feedback
+              if (typeof window !== 'undefined' && window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+                const msg = new SpeechSynthesisUtterance();
+                msg.text = `好的，已添加提醒。`;
+                msg.lang = 'zh-CN';
+                if (curVoice.voiceURI) {
+                    const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === curVoice.voiceURI);
+                    if (voice) msg.voice = voice;
+                }
+                window.speechSynthesis.speak(msg);
+              }
+
+          } else {
+              throw new Error("未能识别出有效的提醒内容");
+          }
+
+      } catch (e: any) {
+          addMessage('assistant', `抱歉，处理失败：${e.message}`, 'error');
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const toggleAssistant = () => {
+      setIsOpen(!isOpen);
+      if (!isOpen) {
+          // Reset interaction state if needed, or keep history
+          // setMessages([...initial]); // Uncomment to clear history on reopen
+      }
+  };
+
+  const handleMicClick = () => {
+      if (!hasSpeechSupport) {
+          alert("浏览器不支持语音识别");
+          return;
+      }
+      if (isListening) {
+          stopListening();
+      } else {
+          startListening();
+      }
   };
 
   return (
-    <div className="fixed bottom-6 left-0 right-0 flex justify-center z-40 px-4 pointer-events-none">
-      <div className="w-full max-w-sm flex items-end gap-3 pointer-events-auto">
-        
-        {/* Manual Input Button */}
-        <button 
-            onClick={onManualInput}
-            className="flex-1 bg-white hover:bg-slate-50 text-slate-700 h-16 rounded-2xl shadow-xl border border-slate-100 flex items-center justify-center gap-3 transition-transform active:scale-95"
-        >
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                <i className="fa-solid fa-keyboard"></i>
-            </div>
-            <span className="font-bold text-lg">手动添加</span>
-        </button>
+    <>
+        {/* Floating Bar (Always Visible) */}
+        {!isOpen && (
+             <div className="fixed bottom-6 left-0 right-0 flex justify-center z-40 px-4 pointer-events-none">
+                <div className="w-full max-w-sm flex items-end gap-3 pointer-events-auto">
+                    <button 
+                        onClick={onManualInput}
+                        className="flex-1 bg-white hover:bg-slate-50 text-slate-700 h-16 rounded-2xl shadow-xl border border-slate-100 flex items-center justify-center gap-3 transition-transform active:scale-95"
+                    >
+                        <i className="fa-solid fa-keyboard text-xl"></i>
+                        <span className="font-bold text-lg">手动添加</span>
+                    </button>
+                    <button
+                        onClick={toggleAssistant}
+                        className="h-16 w-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 flex items-center justify-center transition-transform active:scale-95"
+                    >
+                        <i className="fa-solid fa-microphone text-2xl"></i>
+                    </button>
+                </div>
+             </div>
+        )}
 
-        {/* AI Voice Button */}
-        <div className="relative">
-             {/* Dynamic Speech Bubble */}
-             {(isListening || isProcessing || transcript) && (
-                <div className="absolute bottom-20 right-0 bg-slate-800 text-white p-4 rounded-3xl rounded-br-sm shadow-2xl min-w-[200px] max-w-[280px] animate-fade-in z-50 flex flex-col justify-center min-h-[80px]">
-                    {/* Content Display */}
-                    {transcript ? (
-                        <div className="mb-2">
-                             <div className="text-lg font-medium leading-snug break-words">
-                                "{transcript}"
+        {/* Chat Assistant Overlay */}
+        {isOpen && (
+            <div className="fixed inset-0 z-50 flex flex-col bg-slate-100/90 backdrop-blur-sm animate-fade-in">
+                
+                {/* Header */}
+                <div className="bg-white px-4 py-3 shadow-sm flex items-center justify-between flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                            <i className="fa-solid fa-robot"></i>
+                        </div>
+                        <span className="font-bold text-slate-800">智能助手</span>
+                    </div>
+                    <button onClick={toggleAssistant} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200">
+                        <i className="fa-solid fa-times text-slate-500"></i>
+                    </button>
+                </div>
+
+                {/* Chat Area */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {messages.map(msg => (
+                        <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            
+                            {/* Avatar for Assistant */}
+                            {msg.role === 'assistant' && (
+                                <div className="w-8 h-8 rounded-full bg-blue-500 flex-shrink-0 flex items-center justify-center text-white text-xs mr-2 mt-1">
+                                    AI
+                                </div>
+                            )}
+
+                            <div className={`max-w-[80%] space-y-2`}>
+                                {/* Text Bubble */}
+                                {msg.text && (
+                                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm
+                                        ${msg.role === 'user' 
+                                            ? 'bg-blue-500 text-white rounded-br-none' 
+                                            : msg.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-none' : 'bg-white text-slate-700 rounded-bl-none'}
+                                    `}>
+                                        {msg.text}
+                                    </div>
+                                )}
+
+                                {/* Success Card */}
+                                {msg.type === 'success-card' && msg.data && (
+                                    <div className="bg-white rounded-2xl p-3 shadow-md border-l-4 border-green-500 overflow-hidden animate-scale-in">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-xs font-bold text-slate-400 uppercase">提醒已创建</span>
+                                            <i className="fa-solid fa-check-circle text-green-500"></i>
+                                        </div>
+                                        <h4 className="font-bold text-lg text-slate-800 mb-1">{msg.data.title}</h4>
+                                        <div className="text-sm text-slate-600 flex flex-wrap gap-x-3 gap-y-1">
+                                            <span className="flex items-center gap-1"><i className="fa-regular fa-clock text-xs"></i> {msg.data.time}</span>
+                                            <span className="flex items-center gap-1"><i className="fa-regular fa-calendar text-xs"></i> {msg.data.date}</span>
+                                            <span className="flex items-center gap-1"><i className="fa-solid fa-user text-xs"></i> {msg.data.targetUserName}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    ) : isListening ? (
-                         // Listening visualization when no text yet
-                         <div className="flex flex-col items-center gap-2 py-1">
-                            <div className="flex gap-1 h-6 items-center">
-                                <div className="w-1.5 h-3 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_infinite]"></div>
-                                <div className="w-1.5 h-5 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.1s_infinite]"></div>
-                                <div className="w-1.5 h-8 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.2s_infinite]"></div>
-                                <div className="w-1.5 h-5 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.3s_infinite]"></div>
-                                <div className="w-1.5 h-3 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.4s_infinite]"></div>
+                    ))}
+                    
+                    {/* Real-time listening indicator */}
+                    {isListening && (
+                        <div className="flex justify-end">
+                            <div className="bg-blue-500/10 border border-blue-500/20 text-blue-700 px-4 py-2.5 rounded-2xl rounded-br-none max-w-[80%] animate-pulse">
+                                {interimText || "..."}
                             </div>
-                            <span className="text-sm font-bold text-slate-300">正在听...</span>
-                        </div>
-                    ) : null}
-
-                    {/* Status Footer */}
-                    {isProcessing && (
-                         <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm border-t border-slate-700 pt-2 mt-1">
-                             <i className="fa-solid fa-brain fa-bounce"></i>
-                             <span>AI 正在思考...</span>
                         </div>
                     )}
+
+                    {/* Processing Indicator */}
+                    {isProcessing && (
+                         <div className="flex justify-start">
+                            <div className="w-8 h-8 mr-2"></div>
+                            <div className="bg-slate-100 text-slate-500 px-4 py-2 rounded-2xl rounded-bl-none text-xs flex items-center gap-2">
+                                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                正在思考...
+                            </div>
+                         </div>
+                    )}
+                    <div ref={chatEndRef}></div>
                 </div>
-             )}
 
-             <button
-                onClick={toggleListening}
-                disabled={isProcessing}
-                className={`h-16 w-16 rounded-2xl shadow-xl flex items-center justify-center text-white transition-all duration-300 z-10 relative
-                    ${!hasSpeechSupport ? 'bg-slate-300' : isListening ? 'bg-red-500 scale-110 shadow-red-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}
-                `}
-                title={!hasSpeechSupport ? "当前环境不支持语音" : "语音添加"}
-            >
-                {isProcessing ? (
-                    <i className="fa-solid fa-spinner fa-spin text-2xl"></i>
-                ) : (
-                    <i className={`fa-solid ${isListening ? 'fa-stop' : 'fa-microphone'} text-2xl`}></i>
-                )}
-            </button>
-             
-             {isListening && (
-                <div className="absolute inset-0 bg-red-500 rounded-2xl animate-ping opacity-30"></div>
-             )}
-        </div>
+                {/* Bottom Controls */}
+                <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-center gap-4 flex-shrink-0 pb-8 md:pb-4">
+                    <button 
+                         onClick={onManualInput}
+                         className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200"
+                         title="切换手动输入"
+                    >
+                        <i className="fa-solid fa-keyboard"></i>
+                    </button>
+                    
+                    <div className="relative">
+                        {isListening && <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-30"></div>}
+                        <button
+                            onClick={handleMicClick}
+                            className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl shadow-lg transition-all active:scale-95 z-10 relative
+                                ${isListening ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'}
+                            `}
+                        >
+                            <i className={`fa-solid ${isListening ? 'fa-stop' : 'fa-microphone'}`}></i>
+                        </button>
+                    </div>
 
-      </div>
-    </div>
+                    <div className="w-12"></div> {/* Spacer to center the mic */}
+                </div>
+            </div>
+        )}
+    </>
   );
 };
 
