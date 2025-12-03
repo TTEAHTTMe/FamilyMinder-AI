@@ -114,18 +114,20 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           isCompleted: false
         });
         
-        // Audio feedback
-        const msg = new SpeechSynthesisUtterance();
-        msg.text = `已为${targetUser.name}添加：${result.date === todayStr ? '' : result.date} ${result.time} ${result.title}`;
-        msg.lang = 'zh-CN';
-        msg.rate = voiceSettings.rate;
-        msg.pitch = voiceSettings.pitch;
-        msg.volume = voiceSettings.volume;
-        if (voiceSettings.voiceURI) {
-            const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceSettings.voiceURI);
-            if (voice) msg.voice = voice;
+        // Audio feedback (SAFE CHECK)
+        if ('speechSynthesis' in window) {
+            const msg = new SpeechSynthesisUtterance();
+            msg.text = `已为${targetUser.name}添加：${result.date === todayStr ? '' : result.date} ${result.time} ${result.title}`;
+            msg.lang = 'zh-CN';
+            msg.rate = voiceSettings.rate;
+            msg.pitch = voiceSettings.pitch;
+            msg.volume = voiceSettings.volume;
+            if (voiceSettings.voiceURI) {
+                const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceSettings.voiceURI);
+                if (voice) msg.voice = voice;
+            }
+            window.speechSynthesis.speak(msg);
         }
-        window.speechSynthesis.speak(msg);
       }
     } catch (e: any) {
       console.error(e);

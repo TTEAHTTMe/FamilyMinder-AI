@@ -34,17 +34,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Local state to track which user ID is pending deletion confirmation
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Load voices
+  // Load voices safely
   useEffect(() => {
     const loadVoices = () => {
+      if (!('speechSynthesis' in window)) return;
       const voices = window.speechSynthesis.getVoices();
       const zhVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN'));
       setAvailableVoices(zhVoices.length > 0 ? zhVoices : voices);
     };
 
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-    return () => { window.speechSynthesis.onvoiceschanged = null; };
+    if ('speechSynthesis' in window) {
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    return () => { 
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = null; 
+        }
+    };
   }, []);
 
   if (!isOpen) return null;
@@ -88,6 +95,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // --- Voice Handlers ---
   const handleTestVoice = () => {
+    if (!('speechSynthesis' in window)) {
+        alert("您的浏览器不支持语音功能。");
+        return;
+    }
+
     window.speechSynthesis.cancel();
     const msg = new SpeechSynthesisUtterance("你好，我是家庭智能助手，这是我的声音。");
     msg.lang = 'zh-CN';
@@ -259,8 +271,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500"
                   value={voiceSettings.voiceURI || ''}
                   onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}
+                  disabled={availableVoices.length === 0}
                 >
-                   {availableVoices.length === 0 && <option value="">默认声音</option>}
+                   {availableVoices.length === 0 && <option value="">默认声音 (不支持选择)</option>}
                    {availableVoices.map(v => (
                      <option key={v.voiceURI} value={v.voiceURI}>
                        {v.name} ({v.lang})

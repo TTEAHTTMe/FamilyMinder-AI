@@ -52,6 +52,9 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   // Speech Cycle Logic
   useEffect(() => {
     const speak = () => {
+      // SAFETY CHECK: If browser doesn't support speech, exit early
+      if (!('speechSynthesis' in window)) return;
+
       // Build a combined sentence for everyone
       let combinedText = "";
       
@@ -98,7 +101,9 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
 
     return () => {
         clearInterval(interval);
-        window.speechSynthesis.cancel();
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
     };
   }, [reminders, users, voiceSettings]);
 
@@ -133,7 +138,7 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
                              </div>
                              <div className="flex-1 min-w-0">
                                  <div className="flex justify-between items-center">
-                                    <span className="font-bold text-slate-700 truncate mr-2">{user?.name}</span>
+                                    <span className="font-bold text-slate-700 truncate mr-2">{user?.name || '未知成员'}</span>
                                     <span className="text-xs font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full uppercase whitespace-nowrap">
                                         {reminder.type === 'medication' ? '用药' : '任务'}
                                     </span>

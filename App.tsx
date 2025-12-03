@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 // --- Error Boundary Component ---
 // This prevents the "White Screen of Death" by catching render errors
 interface ErrorBoundaryProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -20,10 +20,10 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -427,15 +427,18 @@ const AppContent: React.FC = () => {
       setActiveReminders(prev => {
           const next = prev.filter(r => r.id !== id);
           if (next.length === 0) {
-              const msg = new SpeechSynthesisUtterance("太棒了，所有任务已完成！");
-              msg.lang = 'zh-CN';
-              if (voiceSettings.voiceURI) {
-                const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceSettings.voiceURI);
-                if (voice) msg.voice = voice;
+              // Safety Check for Speech API
+              if ('speechSynthesis' in window) {
+                  const msg = new SpeechSynthesisUtterance("太棒了，所有任务已完成！");
+                  msg.lang = 'zh-CN';
+                  if (voiceSettings.voiceURI) {
+                    const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceSettings.voiceURI);
+                    if (voice) msg.voice = voice;
+                  }
+                  msg.rate = voiceSettings.rate;
+                  msg.pitch = voiceSettings.pitch;
+                  window.speechSynthesis.speak(msg);
               }
-              msg.rate = voiceSettings.rate;
-              msg.pitch = voiceSettings.pitch;
-              window.speechSynthesis.speak(msg);
           }
           return next;
       });
