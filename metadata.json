@@ -1,0 +1,7 @@
+{
+  "name": "FamilyMinder AI",
+  "description": "一个具备AI语音识别功能的家庭智能日程提醒应用，支持多用户切换、用药持续提醒和语音播报。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
