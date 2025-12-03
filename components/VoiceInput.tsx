@@ -48,20 +48,21 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
     }
   }, []);
 
-  // Use a fallback to prevent crash if configs are undefined (during migration/error states)
-  const activeConfig = aiSettings.configs[aiSettings.activeProvider] || aiSettings.configs.gemini;
+  // SAFE ACCESS: Use optional chaining to prevent crash if configs are missing
+  const activeConfig = aiSettings?.configs?.[aiSettings?.activeProvider] || aiSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
 
   const toggleListening = () => {
+    // Basic check if API Key is present for the active provider (except custom)
+    if (!activeConfig.apiKey && aiSettings.activeProvider !== 'custom') {
+        alert(`请先在设置中配置 ${aiSettings.activeProvider || 'AI'} 的 API Key`);
+        return;
+    }
+    
     if (!hasSpeechSupport) {
         alert("当前浏览器或环境不支持语音识别功能。\n请确保：\n1. 使用 Chrome 或 Safari 浏览器\n2. 使用 HTTPS 协议或 localhost 访问");
         return;
     }
 
-    // Basic check if API Key is present for the active provider (except custom)
-    if (!activeConfig.apiKey && aiSettings.activeProvider !== 'custom') {
-        alert(`请先在设置中配置 ${aiSettings.activeProvider} 的 API Key`);
-        return;
-    }
     if (isListening) {
       recognitionRef.current?.stop();
     } else {

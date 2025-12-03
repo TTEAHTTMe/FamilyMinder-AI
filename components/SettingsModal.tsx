@@ -109,12 +109,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Helper to update specific config fields for the active provider
   const updateAiConfig = (field: 'apiKey' | 'baseUrl' | 'model', value: string) => {
       const active = aiSettings.activeProvider;
+      // SAFE ACCESS: Ensure configs exists
+      const currentConfigs = aiSettings.configs || {};
+      const activeConfig = currentConfigs[active] || {};
+
       setAiSettings({
           ...aiSettings,
           configs: {
-              ...aiSettings.configs,
+              ...currentConfigs,
               [active]: {
-                  ...aiSettings.configs[active],
+                  ...activeConfig,
                   [field]: value
               }
           }
@@ -122,7 +126,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   };
   
   // Safe access with fallback to prevent crashes if data is malformed
-  const currentConfig = aiSettings.configs[aiSettings.activeProvider] || aiSettings.configs.gemini;
+  const currentConfig = aiSettings?.configs?.[aiSettings?.activeProvider] || aiSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">

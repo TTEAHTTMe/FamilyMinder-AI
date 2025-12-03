@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider } from './types';
 import VoiceInput from './components/VoiceInput';
@@ -7,6 +7,60 @@ import ManualInputModal from './components/ManualInputModal';
 import SettingsModal from './components/SettingsModal';
 import CalendarView from './components/CalendarView';
 import { v4 as uuidv4 } from 'uuid';
+
+// --- Error Boundary Component ---
+// This prevents the "White Screen of Death" by catching render errors
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-red-50 text-red-900 text-center">
+          <h1 className="text-3xl font-bold mb-4">哎呀，出错了 😵</h1>
+          <p className="mb-4 text-lg">应用程序遇到了一些问题。</p>
+          <div className="bg-white p-4 rounded-xl border border-red-200 shadow-sm mb-6 max-w-md overflow-auto text-left text-sm font-mono">
+            {this.state.error?.toString()}
+          </div>
+          <button 
+            onClick={this.handleReset}
+            className="px-6 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-transform"
+          >
+            重置所有数据并刷新
+          </button>
+          <p className="mt-4 text-sm opacity-60">点击重置将清除本地缓存并恢复出厂设置。</p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Helper to extract color name from Tailwind class (e.g. "bg-blue-500" -> "blue")
 const getColorName = (bgClass: string) => {
@@ -49,17 +103,21 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, message, onC
   );
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   // --- State Initialization ---
   const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('family_users');
-    return saved ? JSON.parse(saved) : MOCK_USERS;
+    try {
+        const saved = localStorage.getItem('family_users');
+        return saved ? JSON.parse(saved) : MOCK_USERS;
+    } catch { return MOCK_USERS; }
   });
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = localStorage.getItem('family_users');
-    const loadedUsers = saved ? JSON.parse(saved) : MOCK_USERS;
-    return loadedUsers[0];
+    try {
+        const saved = localStorage.getItem('family_users');
+        const loadedUsers = saved ? JSON.parse(saved) : MOCK_USERS;
+        return loadedUsers[0] || MOCK_USERS[0];
+    } catch { return MOCK_USERS[0]; }
   });
 
   // New State for View Mode
@@ -71,25 +129,31 @@ const App: React.FC = () => {
   });
 
   const [reminders, setReminders] = useState<Reminder[]>(() => {
-    const saved = localStorage.getItem('family_reminders');
-    let loaded = saved ? JSON.parse(saved) : INITIAL_REMINDERS;
-    // Migration for old data without date
-    const today = new Date().toISOString().split('T')[0];
-    loaded = loaded.map((r: any) => ({
-        ...r,
-        date: r.date || today
-    }));
-    return loaded;
+    try {
+        const saved = localStorage.getItem('family_reminders');
+        let loaded = saved ? JSON.parse(saved) : INITIAL_REMINDERS;
+        // Migration for old data without date
+        const today = new Date().toISOString().split('T')[0];
+        if (Array.isArray(loaded)) {
+            loaded = loaded.map((r: any) => ({
+                ...r,
+                date: r.date || today
+            }));
+            return loaded;
+        }
+        return INITIAL_REMINDERS;
+    } catch { return INITIAL_REMINDERS; }
   });
 
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(() => {
-    const saved = localStorage.getItem('family_voice_settings');
-    return saved ? JSON.parse(saved) : { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 };
+    try {
+        const saved = localStorage.getItem('family_voice_settings');
+        return saved ? JSON.parse(saved) : { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 };
+    } catch { return { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 }; }
   });
 
   // AI Settings State with Robust Migration & Sanitization Logic
   const [aiSettings, setAiSettings] = useState<AISettings>(() => {
-    const saved = localStorage.getItem('family_ai_settings');
     const defaultSettings: AISettings = { 
         activeProvider: 'gemini',
         configs: {
@@ -101,62 +165,55 @@ const App: React.FC = () => {
         }
     };
 
-    if (saved) {
-        try {
-            const parsed = JSON.parse(saved);
-            
-            // 1. Handle Legacy Flat Structure (Migration)
-            if (!parsed.configs) {
-                console.log("Migrating legacy AI settings...");
-                const oldProvider = (parsed.provider || 'gemini') as AIProvider;
-                // Create a clean new state based on default
-                const migratedSettings = { ...defaultSettings };
-                migratedSettings.activeProvider = oldProvider;
-                
-                // Inject old values into the correct slot
-                if (migratedSettings.configs[oldProvider]) {
-                    migratedSettings.configs[oldProvider] = {
-                        apiKey: parsed.apiKey || '',
-                        baseUrl: parsed.baseUrl || migratedSettings.configs[oldProvider].baseUrl,
-                        model: parsed.model || migratedSettings.configs[oldProvider].model
-                    };
-                }
-                return migratedSettings;
-            }
-            
-            // 2. Handle Deep Merge / Sanitization (Crash Prevention)
-            // Even if 'configs' exists, it might miss new providers (e.g. siliconflow) added in code updates.
-            // We must ensure every provider in defaultSettings exists in the final object.
-            
-            const sanitizedConfigs = { ...defaultSettings.configs };
-            
-            // Overwrite defaults with user data where available
-            Object.keys(defaultSettings.configs).forEach((key) => {
-                const providerKey = key as AIProvider;
-                if (parsed.configs[providerKey]) {
-                    sanitizedConfigs[providerKey] = {
-                        ...defaultSettings.configs[providerKey], // keep code defaults as base
-                        ...parsed.configs[providerKey]           // overwrite with user saved data
-                    };
-                }
-            });
+    try {
+        const saved = localStorage.getItem('family_ai_settings');
+        if (!saved) return defaultSettings;
 
-            // Ensure activeProvider is valid
-            const safeActiveProvider = (parsed.activeProvider && defaultSettings.configs[parsed.activeProvider as AIProvider])
-                ? parsed.activeProvider
-                : 'gemini';
+        const parsed = JSON.parse(saved);
+        
+        // Paranoid check: parsed must be an object
+        if (!parsed || typeof parsed !== 'object') return defaultSettings;
 
-            return {
-                activeProvider: safeActiveProvider,
-                configs: sanitizedConfigs
-            };
-
-        } catch (e) {
-            console.error("Failed to parse AI settings, resetting to default", e);
-            return defaultSettings;
+        // Construct a safe config object by merging default with parsed
+        const safeConfigs = { ...defaultSettings.configs };
+        
+        // If the saved data has a 'configs' object, try to merge known keys
+        if (parsed.configs && typeof parsed.configs === 'object') {
+             const providerKeys = Object.keys(defaultSettings.configs) as AIProvider[];
+             providerKeys.forEach(key => {
+                 if (parsed.configs[key]) {
+                     safeConfigs[key] = {
+                         ...defaultSettings.configs[key],
+                         ...parsed.configs[key]
+                     };
+                 }
+             });
+        } else if (parsed.apiKey) {
+             // Legacy migration (flat structure)
+             console.log("Migrating legacy flat AI settings...");
+             const oldProvider = (parsed.provider || 'gemini') as AIProvider;
+             if (safeConfigs[oldProvider]) {
+                 safeConfigs[oldProvider].apiKey = parsed.apiKey || '';
+                 safeConfigs[oldProvider].baseUrl = parsed.baseUrl || safeConfigs[oldProvider].baseUrl;
+                 safeConfigs[oldProvider].model = parsed.model || safeConfigs[oldProvider].model;
+             }
         }
+
+        // Validate active provider
+        let active = parsed.activeProvider;
+        if (!active || !safeConfigs[active as AIProvider]) {
+            active = 'gemini';
+        }
+
+        return {
+            activeProvider: active,
+            configs: safeConfigs
+        };
+
+    } catch (e) {
+        console.error("Failed to parse AI settings, resetting to default", e);
+        return defaultSettings;
     }
-    return defaultSettings;
   });
 
   const [activeReminders, setActiveReminders] = useState<Reminder[]>([]);
@@ -770,6 +827,15 @@ const App: React.FC = () => {
       </main>
     </div>
   );
+};
+
+// Wrap main app in error boundary
+const App: React.FC = () => {
+    return (
+        <ErrorBoundary>
+            <AppContent />
+        </ErrorBoundary>
+    );
 };
 
 export default App;
