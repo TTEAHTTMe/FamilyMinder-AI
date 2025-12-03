@@ -48,9 +48,15 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
     }
   }, []);
 
-  const activeConfig = aiSettings.configs[aiSettings.activeProvider];
+  // Use a fallback to prevent crash if configs are undefined (during migration/error states)
+  const activeConfig = aiSettings.configs[aiSettings.activeProvider] || aiSettings.configs.gemini;
 
   const toggleListening = () => {
+    if (!hasSpeechSupport) {
+        alert("当前浏览器或环境不支持语音识别功能。\n请确保：\n1. 使用 Chrome 或 Safari 浏览器\n2. 使用 HTTPS 协议或 localhost 访问");
+        return;
+    }
+
     // Basic check if API Key is present for the active provider (except custom)
     if (!activeConfig.apiKey && aiSettings.activeProvider !== 'custom') {
         alert(`请先在设置中配置 ${aiSettings.activeProvider} 的 API Key`);
@@ -157,9 +163,9 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 
              <button
                 onClick={toggleListening}
-                disabled={isProcessing || !hasSpeechSupport}
+                disabled={isProcessing}
                 className={`h-16 w-16 rounded-2xl shadow-xl flex items-center justify-center text-white transition-all duration-300 z-10 relative
-                    ${!hasSpeechSupport ? 'bg-slate-300 cursor-not-allowed' : isListening ? 'bg-red-500 scale-110 shadow-red-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}
+                    ${!hasSpeechSupport ? 'bg-slate-300' : isListening ? 'bg-red-500 scale-110 shadow-red-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}
                 `}
                 title={!hasSpeechSupport ? "当前环境不支持语音" : "语音添加"}
             >

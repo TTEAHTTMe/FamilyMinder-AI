@@ -121,7 +121,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       });
   };
   
-  const currentConfig = aiSettings.configs[aiSettings.activeProvider];
+  // Safe access with fallback to prevent crashes if data is malformed
+  const currentConfig = aiSettings.configs[aiSettings.activeProvider] || aiSettings.configs.gemini;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">

@@ -87,7 +87,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 };
   });
 
-  // AI Settings State with Migration Logic
+  // AI Settings State with Robust Migration & Sanitization Logic
   const [aiSettings, setAiSettings] = useState<AISettings>(() => {
     const saved = localStorage.getItem('family_ai_settings');
     const defaultSettings: AISettings = { 
@@ -105,34 +105,52 @@ const App: React.FC = () => {
         try {
             const parsed = JSON.parse(saved);
             
-            // Check if it is the old flat structure (missing 'configs')
+            // 1. Handle Legacy Flat Structure (Migration)
             if (!parsed.configs) {
                 console.log("Migrating legacy AI settings...");
                 const oldProvider = (parsed.provider || 'gemini') as AIProvider;
-                const oldKey = parsed.apiKey || '';
-                const oldBaseUrl = parsed.baseUrl || '';
-                const oldModel = parsed.model || '';
-
-                // Migrate the old key to the correct provider slot
-                const newSettings = { ...defaultSettings };
-                newSettings.activeProvider = oldProvider;
+                // Create a clean new state based on default
+                const migratedSettings = { ...defaultSettings };
+                migratedSettings.activeProvider = oldProvider;
                 
-                // Update the specific config for the active provider with old values
-                newSettings.configs[oldProvider] = {
-                    apiKey: oldKey,
-                    baseUrl: oldBaseUrl || newSettings.configs[oldProvider].baseUrl,
-                    model: oldModel || newSettings.configs[oldProvider].model
-                };
-                
-                return newSettings;
+                // Inject old values into the correct slot
+                if (migratedSettings.configs[oldProvider]) {
+                    migratedSettings.configs[oldProvider] = {
+                        apiKey: parsed.apiKey || '',
+                        baseUrl: parsed.baseUrl || migratedSettings.configs[oldProvider].baseUrl,
+                        model: parsed.model || migratedSettings.configs[oldProvider].model
+                    };
+                }
+                return migratedSettings;
             }
             
-            // Ensure all providers exist even if loading from a slightly older version of new struct
+            // 2. Handle Deep Merge / Sanitization (Crash Prevention)
+            // Even if 'configs' exists, it might miss new providers (e.g. siliconflow) added in code updates.
+            // We must ensure every provider in defaultSettings exists in the final object.
+            
+            const sanitizedConfigs = { ...defaultSettings.configs };
+            
+            // Overwrite defaults with user data where available
+            Object.keys(defaultSettings.configs).forEach((key) => {
+                const providerKey = key as AIProvider;
+                if (parsed.configs[providerKey]) {
+                    sanitizedConfigs[providerKey] = {
+                        ...defaultSettings.configs[providerKey], // keep code defaults as base
+                        ...parsed.configs[providerKey]           // overwrite with user saved data
+                    };
+                }
+            });
+
+            // Ensure activeProvider is valid
+            const safeActiveProvider = (parsed.activeProvider && defaultSettings.configs[parsed.activeProvider as AIProvider])
+                ? parsed.activeProvider
+                : 'gemini';
+
             return {
-                ...defaultSettings,
-                ...parsed,
-                configs: { ...defaultSettings.configs, ...parsed.configs }
+                activeProvider: safeActiveProvider,
+                configs: sanitizedConfigs
             };
+
         } catch (e) {
             console.error("Failed to parse AI settings, resetting to default", e);
             return defaultSettings;
