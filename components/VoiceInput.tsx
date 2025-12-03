@@ -26,81 +26,110 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   }, [currentUser, users, aiSettings, voiceSettings]);
 
   useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    if (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false; // We want it to stop after one sentence usually
-      recognitionRef.current.lang = 'zh-CN';
-      recognitionRef.current.interimResults = true; // IMPORTANT: Enable real-time feedback
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false; // We want it to stop after one sentence usually
+        recognition.lang = 'zh-CN';
+        recognition.interimResults = true; // IMPORTANT: Enable real-time feedback
 
-      recognitionRef.current.onresult = (event: any) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
+        recognition.onresult = (event: any) => {
+            let finalTranscript = '';
+            let interimTranscript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
-            } else {
-                interimTranscript += event.results[i][0].transcript;
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
             }
-        }
 
-        // Show whatever we have
-        const fullText = finalTranscript || interimTranscript;
-        setTranscript(fullText);
+            // Show whatever we have
+            const fullText = finalTranscript || interimTranscript;
+            setTranscript(fullText);
 
-        // If we have a final result, process it
-        if (finalTranscript) {
+            // If we have a final result, process it
+            if (finalTranscript) {
+                // Force stop purely for state consistency
+                setIsListening(false);
+                handleAIProcess(finalTranscript);
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error', event.error);
             setIsListening(false);
-            handleAIProcess(finalTranscript);
-        }
-      };
+            
+            // Map common errors to user-friendly alerts
+            if (event.error === 'not-allowed') {
+                alert("无法访问麦克风。请检查浏览器权限设置。");
+            } else if (event.error === 'network') {
+                alert("网络错误。请检查您的网络连接或确保 HTTPS 访问。");
+            } else if (event.error === 'no-speech') {
+                // Just silent reset, maybe user didn't say anything
+                setTranscript('');
+            } else if (event.error === 'aborted') {
+                // User stopped it, fine.
+            } else {
+                // Other errors
+                // alert("语音识别错误: " + event.error);
+            }
+        };
 
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        if (event.error !== 'no-speech') {
-             setIsListening(false);
-             setTranscript('');
-        }
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-      
-      setHasSpeechSupport(true);
+        recognition.onend = () => {
+            setIsListening(false);
+        };
+        
+        recognitionRef.current = recognition;
+        setHasSpeechSupport(true);
+      } catch (e) {
+        console.error("Speech init error", e);
+        setHasSpeechSupport(false);
+      }
     } else {
       setHasSpeechSupport(false);
     }
   }, []);
 
-  // SAFE ACCESS: Use optional chaining to prevent crash if configs are missing
-  // We use this for UI checks, but processing uses ref
+  // SAFE ACCESS
   const activeConfig = aiSettings?.configs?.[aiSettings?.activeProvider] || aiSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
 
   const toggleListening = () => {
-    // Check key
-    if (!activeConfig.apiKey && aiSettings.activeProvider !== 'custom') {
-        alert(`请先在设置中配置 ${aiSettings.activeProvider || 'AI'} 的 API Key`);
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(50);
+
+    // 1. Check Key
+    if (!activeConfig.apiKey && aiSettings?.activeProvider !== 'custom') {
+        alert(`请先在设置中配置 ${aiSettings?.activeProvider || 'AI'} 的 API Key`);
         return;
     }
     
-    if (!hasSpeechSupport) {
+    // 2. Check Browser Support
+    if (!hasSpeechSupport || !recognitionRef.current) {
         alert("当前浏览器或环境不支持语音识别功能。\n请确保：\n1. 使用 Chrome 或 Safari 浏览器\n2. 使用 HTTPS 协议或 localhost 访问");
         return;
     }
 
     if (isListening) {
-      recognitionRef.current?.stop();
-      // On stop, the onend event will handle state
+      // STOPPING
+      setIsListening(false); // Force update UI immediately
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Stop error", e);
+      }
     } else {
+      // STARTING
       setTranscript('');
       try {
-        recognitionRef.current?.start();
+        recognitionRef.current.start();
         setIsListening(true);
-      } catch (e) {
+      } catch (e: any) {
           console.error("Failed to start speech", e);
           setIsListening(false);
+          alert("无法启动麦克风: " + e.message);
       }
     }
   };
@@ -155,6 +184,9 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
         
         // Audio feedback (SAFE CHECK)
         if (typeof window !== 'undefined' && window.speechSynthesis) {
+            // Cancel current speaking to speak new message immediately
+            window.speechSynthesis.cancel();
+            
             const msg = new SpeechSynthesisUtterance();
             msg.text = `已为${targetUser.name}添加：${result.date === todayStr ? '' : result.date} ${result.time} ${result.title}`;
             msg.lang = 'zh-CN';
@@ -196,7 +228,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
         <div className="relative">
              {/* Speech Status Bubble */}
              {(isListening || isProcessing || transcript) && (
-                <div className="absolute bottom-20 right-0 bg-slate-800 text-white p-3 rounded-2xl rounded-tr-sm shadow-xl min-w-[150px] max-w-[200px] text-sm animate-fade-in">
+                <div className="absolute bottom-20 right-0 bg-slate-800 text-white p-3 rounded-2xl rounded-tr-sm shadow-xl min-w-[150px] max-w-[200px] text-sm animate-fade-in z-50">
                     <div className="font-bold mb-1">
                         {isProcessing ? "🧠 思考中..." : isListening ? "👂 正在听..." : "✅ 识别结果"}
                     </div>
