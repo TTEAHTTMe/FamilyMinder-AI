@@ -1,6 +1,26 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ParsedReminder, AIConfig } from "../types";
 
+// Helper to extract JSON from text (handles Markdown code blocks and chatty responses)
+const extractJsonFromText = (text: string): ParsedReminder => {
+    try {
+        // 1. Try direct parse first
+        return JSON.parse(text) as ParsedReminder;
+    } catch (e) {
+        // 2. Try extracting from markdown code blocks ```json ... ``` or just {...}
+        // Match the first valid JSON object structure
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                return JSON.parse(jsonMatch[0]) as ParsedReminder;
+            } catch (e2) {
+                console.error("Extracted block is not valid JSON", e2);
+            }
+        }
+        throw new Error("Could not extract valid JSON from response. Raw: " + text.substring(0, 100));
+    }
+};
+
 // Helper for OpenAI-compatible APIs (DeepSeek, Moonshot, SiliconFlow, Ollama/Custom)
 const callOpenAICompatible = async (
     systemPrompt: string, 
@@ -9,10 +29,16 @@ const callOpenAICompatible = async (
     baseUrl: string, 
     model: string
 ): Promise<ParsedReminder> => {
+    // Controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
     try {
         // Ensure no trailing slash
         const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
         
+        console.log(`Calling AI: ${model} at ${cleanUrl}`);
+
         const response = await fetch(`${cleanUrl}/chat/completions`, {
             method: 'POST',
             headers: {
@@ -22,24 +48,40 @@ const callOpenAICompatible = async (
             body: JSON.stringify({
                 model: model,
                 messages: [
-                    { role: 'system', content: systemPrompt + `\nRespond in JSON format with keys: title, time, date, targetUser, type. Type enum: medication, general, activity.` },
+                    { role: 'system', content: systemPrompt + `\nIMPORTANT: Return ONLY the JSON object. Do not include markdown formatting like \`\`\`json.` },
                     { role: 'user', content: userText }
                 ],
-                response_format: { type: 'json_object' }
-            })
+                // REMOVED response_format: { type: 'json_object' } 
+                // Many models (SiliconFlow Qwen, old DeepSeek) crash with this parameter.
+                // We handle JSON extraction manually instead.
+                temperature: 0.1
+            }),
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             const err = await response.text();
-            throw new Error(`AI Request Failed: ${err}`);
+            throw new Error(`AI Request Failed (${response.status}): ${err}`);
         }
 
         const data = await response.json();
-        const content = data.choices[0].message.content;
-        return JSON.parse(content) as ParsedReminder;
+        const content = data.choices?.[0]?.message?.content;
+        
+        if (!content) {
+            throw new Error("AI returned empty content");
+        }
 
-    } catch (error) {
+        console.log("AI Raw Response:", content);
+        return extractJsonFromText(content);
+
+    } catch (error: any) {
+        clearTimeout(timeoutId);
         console.error("OpenAI Compatible API Error:", error);
+        if (error.name === 'AbortError') {
+            throw new Error("AI 请求超时 (30秒)，请检查网络或更换模型");
+        }
         throw error;
     }
 };
@@ -69,7 +111,8 @@ export const parseReminderWithGemini = async (
       - If a specific name from the valid family members list is mentioned, strictly use that name as targetUser.
       - If it involves medicine, pills, or health, set type to 'medication'.
       - Extract the date if mentioned (e.g. "tomorrow", "next friday"). Return date in YYYY-MM-DD format. If no date mentioned, use today's date (${todayStr}).
-      - Return time in 24-hour HH:mm format.`;
+      - Return time in 24-hour HH:mm format.
+      - Return STRICT valid JSON.`;
   
   // --- OPENAI COMPATIBLE PROVIDERS ---
   if (providerType && providerType !== 'gemini') {

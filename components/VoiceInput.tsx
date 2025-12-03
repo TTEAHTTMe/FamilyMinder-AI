@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { parseReminderWithGemini } from '../services/geminiService';
 import { User, VoiceSettings, AISettings } from '../types';
@@ -186,6 +185,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
     setIsProcessing(true);
     try {
       const familyNames = allUsers.map(u => u.name);
+      // Use local date for relative date calculation
       const todayStr = getTodayString();
       
       const result = await parseReminderWithGemini(
@@ -235,10 +235,12 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
             }
             window.speechSynthesis.speak(msg);
         }
+      } else {
+          throw new Error("AI 返回了空结果");
       }
     } catch (e: any) {
-      console.error(e);
-      alert(`AI 解析失败: ${e.message}`);
+      console.error("AI Logic Failed:", e);
+      alert(`AI 解析失败: ${e.message}\n请检查 API Key 或网络连接。`);
     } finally {
       setIsProcessing(false);
       setTranscript('');
