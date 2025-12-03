@@ -21,6 +21,8 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   
   // We store the active recognition instance here
   const recognitionRef = useRef<any>(null);
+  // Keep track of the transcript in a ref for immediate access during event callbacks/stop
+  const transcriptRef = useRef('');
 
   // Use refs to store latest props to avoid stale closures in callbacks
   const latestPropsRef = useRef({ currentUser, users, aiSettings, voiceSettings });
@@ -28,6 +30,11 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   useEffect(() => {
     latestPropsRef.current = { currentUser, users, aiSettings, voiceSettings };
   }, [currentUser, users, aiSettings, voiceSettings]);
+
+  // Sync transcript state to ref
+  useEffect(() => {
+      transcriptRef.current = transcript;
+  }, [transcript]);
 
   // Check support on mount
   useEffect(() => {
@@ -67,6 +74,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       recognition.onstart = () => {
           setIsListening(true);
           setTranscript('');
+          transcriptRef.current = '';
       };
 
       recognition.onresult = (event: any) => {
@@ -89,7 +97,8 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           }
 
           if (finalTranscript) {
-              // We got the final sentence, stop listening and process
+              // We got the final sentence
+              // Stop recognition to prevent duplicates, but logic continues in handleAIProcess
               try { recognition.stop(); } catch(e) {}
               setIsListening(false);
               handleAIProcess(finalTranscript);
@@ -100,11 +109,9 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           console.error('Speech recognition error', event.error);
           
           if (event.error === 'no-speech') {
-              // Just silent stop, don't alert user as it's annoying
               setIsListening(false);
               return;
           }
-          
           if (event.error === 'aborted') {
               setIsListening(false);
               return;
@@ -116,12 +123,12 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
               alert("无法访问麦克风。请检查浏览器权限设置 (需 HTTPS)。");
           } else if (event.error === 'network') {
               alert("网络错误。请检查您的网络连接。");
-          } else {
-              // alert("语音识别错误: " + event.error);
           }
       };
 
       recognition.onend = () => {
+          // Only turn off listening flag. 
+          // Do NOT clear transcript here, so user can see it while processing.
           if (!isProcessing) {
              setIsListening(false);
           }
@@ -143,13 +150,22 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   };
 
   const stopListening = () => {
-      setIsListening(false); // Immediate UI feedback
+      // Immediate UI feedback
+      setIsListening(false); 
+      
       if (recognitionRef.current) {
           try { 
               recognitionRef.current.stop(); 
           } catch (e) {
               console.error("Stop error", e);
           }
+      }
+
+      // CRITICAL FIX: Manually trigger AI with whatever text we have captured so far.
+      // Do not wait for 'onend' or 'isFinal', as mobile browsers are flaky with those.
+      const currentText = transcriptRef.current;
+      if (currentText && !isProcessing) {
+          handleAIProcess(currentText);
       }
   };
 
@@ -176,13 +192,18 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   };
 
   const handleAIProcess = async (text: string) => {
-    const { currentUser: curUser, users: allUsers, aiSettings: curSettings, voiceSettings: curVoice } = latestPropsRef.current;
-    const curConfig = curSettings?.configs?.[curSettings?.activeProvider] || curSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
-
+    // Prevent double submission
+    if (isProcessing) return;
     if (!text.trim()) return;
 
     setIsProcessing(true);
+    
+    // NOTE: We do NOT clear transcript here. We keep it visible so user sees what is being processed.
+
     try {
+      const { currentUser: curUser, users: allUsers, aiSettings: curSettings, voiceSettings: curVoice } = latestPropsRef.current;
+      const curConfig = curSettings?.configs?.[curSettings?.activeProvider] || curSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
+
       const familyNames = allUsers.map(u => u.name);
       // Use local date for relative date calculation
       const todayStr = getTodayString();
@@ -219,6 +240,9 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           isCompleted: false
         });
         
+        // Clear transcript only on success
+        setTranscript('');
+
         // Audio feedback
         if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.cancel();
@@ -240,9 +264,14 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
     } catch (e: any) {
       console.error("AI Logic Failed:", e);
       alert(`AI 解析失败: ${e.message}\n请检查 API Key 或网络连接。`);
+      // On error, we keep the transcript so user can try again or see what failed
     } finally {
       setIsProcessing(false);
-      setTranscript('');
+      // If success, transcript is already cleared. If failed, it remains.
+      // If we want to auto-clear on error after a while, we could do it here, but keeping it is better.
+      // For now, let's allow user to try again, but maybe we should clear if it was successful.
+      // Actually, let's clear it in the 'catch' block? No, keep it.
+      // Let's clear it if processing is done successfully (logic above).
     }
   };
 
@@ -266,17 +295,16 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
              {/* Dynamic Speech Bubble */}
              {(isListening || isProcessing || transcript) && (
                 <div className="absolute bottom-20 right-0 bg-slate-800 text-white p-4 rounded-3xl rounded-br-sm shadow-2xl min-w-[200px] max-w-[280px] animate-fade-in z-50 flex flex-col justify-center min-h-[80px]">
-                    {isProcessing ? (
-                        <div className="flex items-center gap-3 text-emerald-400 font-bold text-lg">
-                             <i className="fa-solid fa-brain fa-bounce"></i>
-                             <span>思考中...</span>
+                    {/* Content Display */}
+                    {transcript ? (
+                        <div className="mb-2">
+                             <div className="text-lg font-medium leading-snug break-words">
+                                "{transcript}"
+                            </div>
                         </div>
-                    ) : transcript ? (
-                        <div className="text-lg font-medium leading-snug break-words">
-                            "{transcript}"
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center gap-2 py-1">
+                    ) : isListening ? (
+                         // Listening visualization when no text yet
+                         <div className="flex flex-col items-center gap-2 py-1">
                             <div className="flex gap-1 h-6 items-center">
                                 <div className="w-1.5 h-3 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_infinite]"></div>
                                 <div className="w-1.5 h-5 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.1s_infinite]"></div>
@@ -284,7 +312,15 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                                 <div className="w-1.5 h-5 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.3s_infinite]"></div>
                                 <div className="w-1.5 h-3 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.4s_infinite]"></div>
                             </div>
-                            <span className="text-sm font-bold text-slate-300">正在听，请说话...</span>
+                            <span className="text-sm font-bold text-slate-300">正在听...</span>
+                        </div>
+                    ) : null}
+
+                    {/* Status Footer */}
+                    {isProcessing && (
+                         <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm border-t border-slate-700 pt-2 mt-1">
+                             <i className="fa-solid fa-brain fa-bounce"></i>
+                             <span>AI 正在思考...</span>
                         </div>
                     )}
                 </div>
@@ -316,4 +352,3 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 };
 
 export default VoiceInput;
-    
