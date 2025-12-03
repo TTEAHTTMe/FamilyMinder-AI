@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   name: string;
@@ -45,4 +46,12 @@ export interface AISettings {
   configs: {
     [key in AIProvider]: AIConfig;
   };
+}
+
+export interface CloudSettings {
+  apiKey: string; // X-Access-Key
+  binId: string; // Bin ID
+  autoSyncEnabled: boolean;
+  autoSyncInterval: number; // in minutes
+  lastAutoSync?: number; // timestamp
 }

@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { User, VoiceSettings, AISettings, AIProvider } from '../types';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { User, VoiceSettings, AISettings, AIProvider, Reminder, CloudSettings } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { createCloudBackup, updateCloudBackup, fetchCloudBackup } from '../services/cloudService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -11,6 +13,10 @@ interface SettingsModalProps {
   setVoiceSettings: (settings: VoiceSettings) => void;
   aiSettings: AISettings;
   setAiSettings: (settings: AISettings) => void;
+  reminders: Reminder[];
+  setReminders: (reminders: Reminder[]) => void;
+  cloudSettings: CloudSettings;
+  setCloudSettings: (settings: CloudSettings) => void;
 }
 
 const AVATAR_OPTIONS = ['👴', '👵', '👨', '👩', '👶', '👦', '👧', '👱', '👱‍♀️', '😺', '🐶', '🤖', '👾'];
@@ -27,12 +33,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   voiceSettings,
   setVoiceSettings,
   aiSettings,
-  setAiSettings
+  setAiSettings,
+  reminders,
+  setReminders,
+  cloudSettings,
+  setCloudSettings
 }) => {
-  const [activeTab, setActiveTab] = useState<'family' | 'voice' | 'ai'>('family');
+  const [activeTab, setActiveTab] = useState<'family' | 'voice' | 'ai' | 'data' | 'cloud'>('family');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   // Local state to track which user ID is pending deletion confirmation
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // Auto Backup timestamp state
+  const [autoBackupTime, setAutoBackupTime] = useState<string | null>(null);
+  // Cloud Sync state
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load voices safely
   useEffect(() => {
@@ -55,6 +71,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         }
     };
   }, []);
+
+  // Check auto-backup existence when tab changes or opens
+  useEffect(() => {
+      if (activeTab === 'data' && isOpen) {
+          try {
+              const saved = localStorage.getItem('family_auto_backup');
+              if (saved) {
+                  const parsed = JSON.parse(saved);
+                  if (parsed.backupTime) {
+                      const d = new Date(parsed.backupTime);
+                      setAutoBackupTime(d.toLocaleString());
+                  }
+              }
+          } catch (e) { console.error(e); }
+      }
+  }, [activeTab, isOpen]);
 
   if (!isOpen) return null;
 
@@ -138,6 +170,130 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           }
       });
   };
+
+  // --- Data Handlers ---
+  const handleExportData = () => {
+    const data = {
+        users,
+        reminders,
+        voiceSettings,
+        aiSettings,
+        exportDate: new Date().toISOString(),
+        version: "1.0"
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `FamilyMinder_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const json = JSON.parse(event.target?.result as string);
+            if (json.users && Array.isArray(json.users)) setUsers(json.users);
+            if (json.reminders && Array.isArray(json.reminders)) setReminders(json.reminders);
+            if (json.voiceSettings) setVoiceSettings(json.voiceSettings);
+            if (json.aiSettings) setAiSettings(json.aiSettings);
+            alert("数据恢复成功！");
+        } catch (err) {
+            alert("文件格式错误，无法恢复。");
+            console.error(err);
+        }
+    };
+    reader.readAsText(file);
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRestoreAutoBackup = () => {
+      if (!confirm("确定要恢复到最近一次自动备份的状态吗？当前未保存的修改可能会丢失。")) return;
+      
+      try {
+          const saved = localStorage.getItem('family_auto_backup');
+          if (saved) {
+            const json = JSON.parse(saved);
+            if (json.users && Array.isArray(json.users)) setUsers(json.users);
+            if (json.reminders && Array.isArray(json.reminders)) setReminders(json.reminders);
+            if (json.voiceSettings) setVoiceSettings(json.voiceSettings);
+            if (json.aiSettings) setAiSettings(json.aiSettings);
+            alert(`已恢复到: ${new Date(json.backupTime).toLocaleString()}`);
+          } else {
+              alert("未找到自动备份数据。");
+          }
+      } catch (e) {
+          alert("恢复失败，备份数据可能已损坏。");
+      }
+  };
+
+  const handleResetData = () => {
+    if (confirm("确定要清空所有数据并恢复出厂设置吗？此操作无法撤销。")) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  };
+
+  // --- Cloud Sync Handlers ---
+  const handleCloudSync = async () => {
+      if (!cloudSettings.apiKey) {
+          alert("请先填入 JSONBin 的 Access Key");
+          return;
+      }
+      setIsCloudSyncing(true);
+      try {
+          const data = {
+              users,
+              reminders,
+              voiceSettings,
+              aiSettings,
+              version: "1.0",
+              lastUpdated: new Date().toISOString()
+          };
+          if (cloudSettings.binId) {
+              await updateCloudBackup(cloudSettings.apiKey, cloudSettings.binId, data);
+              alert("云端数据更新成功！");
+          } else {
+              const binId = await createCloudBackup(cloudSettings.apiKey, data);
+              setCloudSettings({ ...cloudSettings, binId });
+              alert("云端备份创建成功！Bin ID 已保存。");
+          }
+      } catch (e: any) {
+          alert(`同步失败: ${e.message}`);
+      } finally {
+          setIsCloudSyncing(false);
+      }
+  };
+
+  const handleCloudRestore = async () => {
+      if (!cloudSettings.apiKey || !cloudSettings.binId) {
+          alert("请填入 Key 和 Bin ID");
+          return;
+      }
+      if (!confirm("确定从云端恢复吗？这将覆盖当前本地数据。")) return;
+
+      setIsCloudSyncing(true);
+      try {
+          const data = await fetchCloudBackup(cloudSettings.apiKey, cloudSettings.binId);
+          if (data.users && Array.isArray(data.users)) setUsers(data.users);
+          if (data.reminders && Array.isArray(data.reminders)) setReminders(data.reminders);
+          if (data.voiceSettings) setVoiceSettings(data.voiceSettings);
+          if (data.aiSettings) setAiSettings(data.aiSettings);
+          alert(`恢复成功！最后更新: ${new Date(data.lastUpdated).toLocaleString()}`);
+      } catch (e: any) {
+          alert(`恢复失败: ${e.message}`);
+      } finally {
+          setIsCloudSyncing(false);
+      }
+  };
   
   // Safe access with fallback to prevent crashes if data is malformed
   const currentConfig = aiSettings?.configs?.[aiSettings?.activeProvider] || aiSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
@@ -173,6 +329,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             className={`flex-1 min-w-[80px] py-3 text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'ai' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             AI 配置
+          </button>
+          <button 
+            onClick={() => setActiveTab('data')}
+            className={`flex-1 min-w-[80px] py-3 text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'data' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            数据
+          </button>
+          <button 
+            onClick={() => setActiveTab('cloud')}
+            className={`flex-1 min-w-[80px] py-3 text-sm font-bold transition-colors whitespace-nowrap ${activeTab === 'cloud' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            云同步
           </button>
         </div>
         
@@ -422,6 +590,163 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                  )}
              </div>
           )}
+
+          {activeTab === 'data' && (
+             <div className="space-y-6 animate-fade-in">
+                 <div className="bg-slate-50 p-4 rounded-xl text-sm text-slate-600">
+                     <i className="fa-solid fa-database mr-2"></i>
+                     您的数据存储在本地浏览器中。为了防止数据丢失（如清除缓存），建议定期手动备份。
+                     <br/><br/>
+                     <span className="font-bold">自动备份系统：</span>
+                     应用会在每次数据变更时自动创建快照。
+                 </div>
+
+                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex items-center justify-between">
+                     <div>
+                         <div className="text-sm font-bold text-indigo-900">上次自动备份时间</div>
+                         <div className="text-xs text-indigo-600 mt-0.5">
+                             {autoBackupTime || "暂无备份"}
+                         </div>
+                     </div>
+                     <button
+                         onClick={handleRestoreAutoBackup}
+                         disabled={!autoBackupTime}
+                         className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white rounded-lg text-sm font-bold shadow-sm"
+                     >
+                         一键恢复
+                     </button>
+                 </div>
+
+                 <div className="space-y-3 pt-2">
+                     <button
+                         onClick={handleExportData}
+                         className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold shadow-lg shadow-emerald-100 flex items-center justify-center gap-3 transition-transform active:scale-95"
+                     >
+                         <i className="fa-solid fa-download text-xl"></i>
+                         <div className="text-left">
+                             <div className="text-base">手动备份 (导出)</div>
+                             <div className="text-xs opacity-80 font-normal">下载 .json 文件到本地</div>
+                         </div>
+                     </button>
+
+                     <div className="relative">
+                         <input
+                             type="file"
+                             ref={fileInputRef}
+                             onChange={handleImportData}
+                             accept=".json"
+                             className="hidden"
+                         />
+                         <button
+                             onClick={() => fileInputRef.current?.click()}
+                             className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100 flex items-center justify-center gap-3 transition-transform active:scale-95"
+                         >
+                             <i className="fa-solid fa-upload text-xl"></i>
+                             <div className="text-left">
+                                 <div className="text-base">恢复数据 (导入)</div>
+                                 <div className="text-xs opacity-80 font-normal">从 .json 文件恢复</div>
+                             </div>
+                         </button>
+                     </div>
+                 </div>
+
+                 <div className="pt-6 border-t border-slate-100 mt-4">
+                     <button
+                         onClick={handleResetData}
+                         className="w-full py-3 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                     >
+                         <i className="fa-solid fa-triangle-exclamation"></i>
+                         重置所有数据
+                     </button>
+                 </div>
+             </div>
+          )}
+
+          {activeTab === 'cloud' && (
+             <div className="space-y-6 animate-fade-in">
+                 <div className="bg-purple-50 p-4 rounded-xl text-sm text-purple-700">
+                     <i className="fa-solid fa-cloud mr-2"></i>
+                     通过 JSONBin.io 实现跨设备同步。建议使用 Access Key 以提高安全性。
+                 </div>
+
+                 <div>
+                     <label className="block text-sm font-medium text-slate-700 mb-2">Access API Key</label>
+                     <input
+                         type="password"
+                         value={cloudSettings.apiKey}
+                         onChange={(e) => setCloudSettings({ ...cloudSettings, apiKey: e.target.value })}
+                         placeholder="JSONBin Access Key"
+                         className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500"
+                     />
+                     <div className="mt-1 text-xs text-slate-400">
+                         <a href="https://jsonbin.io/app/app/api-keys" target="_blank" rel="noreferrer" className="underline hover:text-blue-500">获取 Access Key</a>
+                     </div>
+                 </div>
+
+                 <div>
+                     <label className="block text-sm font-medium text-slate-700 mb-2">Bin ID (备份ID)</label>
+                     <input
+                         type="text"
+                         value={cloudSettings.binId}
+                         onChange={(e) => setCloudSettings({ ...cloudSettings, binId: e.target.value })}
+                         placeholder="同步后自动生成，或手动填入以恢复"
+                         className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-mono text-sm"
+                     />
+                 </div>
+
+                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
+                     <div className="flex items-center justify-between">
+                         <span className="text-sm font-bold text-slate-700">自动同步</span>
+                         <button 
+                             onClick={() => setCloudSettings({ ...cloudSettings, autoSyncEnabled: !cloudSettings.autoSyncEnabled })}
+                             className={`w-12 h-6 rounded-full transition-colors relative ${cloudSettings.autoSyncEnabled ? 'bg-purple-600' : 'bg-slate-300'}`}
+                         >
+                             <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${cloudSettings.autoSyncEnabled ? 'left-7' : 'left-1'}`}></div>
+                         </button>
+                     </div>
+                     
+                     {cloudSettings.autoSyncEnabled && (
+                         <div>
+                             <label className="block text-xs font-medium text-slate-500 mb-1">同步频率</label>
+                             <select
+                                value={cloudSettings.autoSyncInterval}
+                                onChange={(e) => setCloudSettings({ ...cloudSettings, autoSyncInterval: Number(e.target.value) })}
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm"
+                             >
+                                 <option value={60}>每 1 小时 (推荐)</option>
+                                 <option value={240}>每 4 小时</option>
+                                 <option value={720}>每 12 小时</option>
+                                 <option value={1440}>每天一次</option>
+                             </select>
+                             <p className="text-[10px] text-slate-400 mt-1">
+                                 上次自动同步: {cloudSettings.lastAutoSync ? new Date(cloudSettings.lastAutoSync).toLocaleString() : '暂无'}
+                             </p>
+                         </div>
+                     )}
+                 </div>
+
+                 <div className="pt-4 flex gap-3">
+                     <button
+                         onClick={handleCloudSync}
+                         disabled={isCloudSyncing}
+                         className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                     >
+                         {isCloudSyncing ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up"></i>}
+                         {cloudSettings.binId ? '立即更新备份' : '创建云端备份'}
+                     </button>
+
+                     <button
+                         onClick={handleCloudRestore}
+                         disabled={isCloudSyncing}
+                         className="flex-1 py-3 bg-white border-2 border-purple-100 text-purple-600 hover:bg-purple-50 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                     >
+                         {isCloudSyncing ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-down"></i>}
+                         从云端恢复
+                     </button>
+                 </div>
+             </div>
+          )}
+
         </div>
 
         {/* Footer */}

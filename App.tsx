@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
-import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI } from './constants';
-import { User, Reminder, VoiceSettings, AISettings, AIProvider } from './types';
+
+import React, { Component, useState, useEffect, useRef, ErrorInfo } from 'react';
+import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString } from './constants';
+import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings } from './types';
 import VoiceInput from './components/VoiceInput';
 import AlarmOverlay from './components/AlarmOverlay';
 import ManualInputModal from './components/ManualInputModal';
 import SettingsModal from './components/SettingsModal';
 import CalendarView from './components/CalendarView';
+import { updateCloudBackup } from './services/cloudService';
 import { v4 as uuidv4 } from 'uuid';
 
 // --- Error Boundary Component ---
-// This prevents the "White Screen of Death" by catching render errors
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
 }
@@ -19,14 +20,11 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null
-    };
-  }
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -127,8 +125,8 @@ const AppContent: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   // State for Date Selection
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-      const now = new Date();
-      return now.toISOString().split('T')[0]; // YYYY-MM-DD
+      // Correctly initialize with system date in local timezone YYYY-MM-DD
+      return getTodayString();
   });
 
   const [reminders, setReminders] = useState<Reminder[]>(() => {
@@ -136,7 +134,7 @@ const AppContent: React.FC = () => {
         const saved = localStorage.getItem('family_reminders');
         let loaded = saved ? JSON.parse(saved) : INITIAL_REMINDERS;
         // Migration for old data without date
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayString();
         if (Array.isArray(loaded)) {
             loaded = loaded.map((r: any) => ({
                 ...r,
@@ -219,6 +217,20 @@ const AppContent: React.FC = () => {
     }
   });
 
+  const [cloudSettings, setCloudSettings] = useState<CloudSettings>(() => {
+      try {
+          const saved = localStorage.getItem('family_cloud_settings');
+          const parsed = saved ? JSON.parse(saved) : {};
+          return {
+              apiKey: parsed.apiKey || '',
+              binId: parsed.binId || '',
+              autoSyncEnabled: parsed.autoSyncEnabled || false,
+              autoSyncInterval: parsed.autoSyncInterval || 60, // Default 1 hour
+              lastAutoSync: parsed.lastAutoSync || 0
+          };
+      } catch { return { apiKey: '', binId: '', autoSyncEnabled: false, autoSyncInterval: 60, lastAutoSync: 0 }; }
+  });
+
   const [activeReminders, setActiveReminders] = useState<Reminder[]>([]);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -233,6 +245,12 @@ const AppContent: React.FC = () => {
   // Refs for scrolling
   const avatarRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
 
+  // Ref to track the actual system date (to detect day rollover)
+  const systemTodayRef = useRef(selectedDate);
+  
+  // Ref to hold latest data for auto-cloud-sync (prevents closure staleness in intervals)
+  const latestDataRef = useRef({ users, reminders, voiceSettings, aiSettings, cloudSettings });
+
   // --- Effects ---
 
   // Check if currentUser still exists
@@ -241,6 +259,11 @@ const AppContent: React.FC = () => {
       if (users.length > 0) setCurrentUser(users[0]);
     }
   }, [users, currentUser]);
+
+  // Update ref with latest data whenever it changes
+  useEffect(() => {
+      latestDataRef.current = { users, reminders, voiceSettings, aiSettings, cloudSettings };
+  }, [users, reminders, voiceSettings, aiSettings, cloudSettings]);
 
   // Persist data
   useEffect(() => {
@@ -255,6 +278,59 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('family_ai_settings', JSON.stringify(aiSettings));
   }, [aiSettings]);
+  useEffect(() => {
+    localStorage.setItem('family_cloud_settings', JSON.stringify(cloudSettings));
+  }, [cloudSettings]);
+
+  // --- AUTOMATIC BACKUP LOGIC (Local) ---
+  useEffect(() => {
+      const backupData = {
+          users,
+          reminders,
+          voiceSettings,
+          aiSettings,
+          backupTime: new Date().toISOString(),
+          type: 'auto'
+      };
+      localStorage.setItem('family_auto_backup', JSON.stringify(backupData));
+  }, [users, reminders, voiceSettings, aiSettings]);
+
+  // --- AUTOMATIC CLOUD SYNC LOGIC ---
+  useEffect(() => {
+      const checkAndSync = async () => {
+          const { cloudSettings, users, reminders, voiceSettings, aiSettings } = latestDataRef.current;
+          
+          if (!cloudSettings.autoSyncEnabled || !cloudSettings.apiKey || !cloudSettings.binId) return;
+
+          const now = Date.now();
+          const lastSync = cloudSettings.lastAutoSync || 0;
+          const intervalMs = cloudSettings.autoSyncInterval * 60 * 1000;
+
+          if (now - lastSync > intervalMs) {
+              console.log("Triggering Auto Cloud Sync...");
+              try {
+                  const syncData = {
+                      users,
+                      reminders,
+                      voiceSettings,
+                      aiSettings,
+                      version: "1.0",
+                      lastUpdated: new Date().toISOString()
+                  };
+                  await updateCloudBackup(cloudSettings.apiKey, cloudSettings.binId, syncData);
+                  
+                  // Update last sync time
+                  setCloudSettings(prev => ({ ...prev, lastAutoSync: Date.now() }));
+                  console.log("Auto Cloud Sync Completed.");
+              } catch (e) {
+                  console.error("Auto Cloud Sync Failed:", e);
+              }
+          }
+      };
+
+      const timer = setInterval(checkAndSync, 60000); // Check every minute
+      return () => clearInterval(timer);
+  }, []);
 
   // Unlock audio
   useEffect(() => {
@@ -317,18 +393,29 @@ const AppContent: React.FC = () => {
     };
   }, [viewMode]);
 
-  // Clock & Alarm Logic
+  // Clock & Alarm Logic & DATE ROLLOVER Logic
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
-      // Format YYYY-MM-DD manually to avoid timezone issues with toISOString vs local time
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const todayString = `${year}-${month}-${day}`;
+      // Use getTodayString helper to ensure consistency
+      const todayString = getTodayString();
 
       const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const currentTimestamp = now.getTime();
+
+      // --- DATE ROLLOVER CHECK ---
+      // If the system date has changed (e.g. passed midnight)
+      if (todayString !== systemTodayRef.current) {
+          // If the user was viewing the "old" today, automatically move them to the "new" today.
+          // This fixes the issue where an always-on display gets stuck on yesterday's date.
+          setSelectedDate(prevDate => {
+              if (prevDate === systemTodayRef.current) {
+                  return todayString;
+              }
+              return prevDate; 
+          });
+          systemTodayRef.current = todayString;
+      }
 
       setReminders(currentReminders => {
         let hasUpdates = false;
@@ -563,6 +650,10 @@ const AppContent: React.FC = () => {
         setVoiceSettings={setVoiceSettings}
         aiSettings={aiSettings}
         setAiSettings={setAiSettings}
+        reminders={reminders}
+        setReminders={setReminders}
+        cloudSettings={cloudSettings}
+        setCloudSettings={setCloudSettings}
       />
 
       {/* --- SIDEBAR / NAVBAR --- */}
@@ -695,9 +786,9 @@ const AppContent: React.FC = () => {
                                     <i className="fa-solid fa-calendar-days text-sm"></i>
                                 </button>
 
-                                {selectedDate !== new Date().toISOString().split('T')[0] && (
+                                {selectedDate !== getTodayString() && (
                                     <button 
-                                        onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                                        onClick={() => setSelectedDate(getTodayString())}
                                         className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded ml-2"
                                     >
                                         回今天
