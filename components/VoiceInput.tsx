@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { parseReminderWithGemini } from '../services/geminiService';
 import { User, VoiceSettings, AISettings } from '../types';
@@ -57,9 +58,9 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
       
-      recognition.continuous = false;
+      recognition.continuous = false; // Mobile prefers false for short commands
       recognition.lang = 'zh-CN';
-      recognition.interimResults = true;
+      recognition.interimResults = true; // CRITICAL: Allows seeing words as they are spoken
       recognition.maxAlternatives = 1;
 
       // 3. Setup Listeners
@@ -73,17 +74,18 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           let interimTranscript = '';
 
           for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                  finalTranscript += event.results[i][0].transcript;
+              const result = event.results[i];
+              if (result.isFinal) {
+                  finalTranscript += result[0].transcript;
               } else {
-                  interimTranscript += event.results[i][0].transcript;
+                  interimTranscript += result[0].transcript;
               }
           }
 
-          const fullText = finalTranscript || interimTranscript;
-          // Only update UI if we have text
-          if (fullText) {
-              setTranscript(fullText);
+          // Force UI update immediately with whatever we have
+          const displayDetails = finalTranscript || interimTranscript;
+          if (displayDetails) {
+              setTranscript(displayDetails);
           }
 
           if (finalTranscript) {
@@ -97,11 +99,12 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       recognition.onerror = (event: any) => {
           console.error('Speech recognition error', event.error);
           
-          // Ignore 'no-speech' and 'aborted' as they are common/benign
           if (event.error === 'no-speech') {
+              // Just silent stop, don't alert user as it's annoying
               setIsListening(false);
               return;
           }
+          
           if (event.error === 'aborted') {
               setIsListening(false);
               return;
@@ -110,17 +113,15 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           setIsListening(false);
           
           if (event.error === 'not-allowed') {
-              alert("无法访问麦克风。请检查浏览器权限设置。");
+              alert("无法访问麦克风。请检查浏览器权限设置 (需 HTTPS)。");
           } else if (event.error === 'network') {
-              alert("网络错误。请检查您的网络连接或确保 HTTPS 访问。");
+              alert("网络错误。请检查您的网络连接。");
           } else {
               // alert("语音识别错误: " + event.error);
           }
       };
 
       recognition.onend = () => {
-          // Double check: if we are still "listening" in UI but it ended without final result, just reset.
-          // If we are processing, don't touch state.
           if (!isProcessing) {
              setIsListening(false);
           }
@@ -134,7 +135,6 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           console.error("Start error", e);
           setIsListening(false);
           if (e.message && e.message.includes('already started')) {
-              // Should not happen with new instance strategy, but just in case
               try { recognition.stop(); } catch(z) {}
           } else {
               alert("无法启动麦克风: " + e.message);
@@ -147,7 +147,6 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       if (recognitionRef.current) {
           try { 
               recognitionRef.current.stop(); 
-              // We rely on 'onresult' (final) or 'onend' to handle the rest
           } catch (e) {
               console.error("Stop error", e);
           }
@@ -264,12 +263,30 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 
         {/* AI Voice Button */}
         <div className="relative">
+             {/* Dynamic Speech Bubble */}
              {(isListening || isProcessing || transcript) && (
-                <div className="absolute bottom-20 right-0 bg-slate-800 text-white p-3 rounded-2xl rounded-tr-sm shadow-xl min-w-[150px] max-w-[200px] text-sm animate-fade-in z-50">
-                    <div className="font-bold mb-1">
-                        {isProcessing ? "🧠 思考中..." : isListening ? "👂 正在听..." : "✅ 识别结果"}
-                    </div>
-                    <div className="opacity-90 min-h-[1.2em]">{transcript || "..."}</div>
+                <div className="absolute bottom-20 right-0 bg-slate-800 text-white p-4 rounded-3xl rounded-br-sm shadow-2xl min-w-[200px] max-w-[280px] animate-fade-in z-50 flex flex-col justify-center min-h-[80px]">
+                    {isProcessing ? (
+                        <div className="flex items-center gap-3 text-emerald-400 font-bold text-lg">
+                             <i className="fa-solid fa-brain fa-bounce"></i>
+                             <span>思考中...</span>
+                        </div>
+                    ) : transcript ? (
+                        <div className="text-lg font-medium leading-snug break-words">
+                            "{transcript}"
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center gap-2 py-1">
+                            <div className="flex gap-1 h-6 items-center">
+                                <div className="w-1.5 h-3 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_infinite]"></div>
+                                <div className="w-1.5 h-5 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.1s_infinite]"></div>
+                                <div className="w-1.5 h-8 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.2s_infinite]"></div>
+                                <div className="w-1.5 h-5 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.3s_infinite]"></div>
+                                <div className="w-1.5 h-3 bg-red-400 rounded-full animate-[pulse_0.5s_ease-in-out_0.4s_infinite]"></div>
+                            </div>
+                            <span className="text-sm font-bold text-slate-300">正在听，请说话...</span>
+                        </div>
+                    )}
                 </div>
              )}
 
@@ -299,3 +316,4 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 };
 
 export default VoiceInput;
+    
