@@ -726,7 +726,7 @@ const AppContent: React.FC = () => {
                             `}
                         >
                             <button
-                                ref={el => avatarRefs.current[u.id] = el}
+                                ref={el => { avatarRefs.current[u.id] = el; }}
                                 className={`
                                     relative w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center text-3xl transition-all duration-300 flex-shrink-0
                                     ${u.color} text-white

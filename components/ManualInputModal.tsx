@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Reminder } from '../types';
+import { getTodayString } from '../constants';
 
 interface ManualInputModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         // Edit mode
         setTitle(initialData.title);
         setTime(initialData.time);
-        setDate(initialData.date || new Date().toISOString().split('T')[0]);
+        setDate(initialData.date || getTodayString());
         setSelectedUserId(initialData.userId);
         setType(initialData.type);
       } else {
@@ -38,10 +39,10 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         setTitle('');
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        const dateString = now.toISOString().split('T')[0];
         
+        // FIX: Use local date string helper instead of UTC
         setTime(timeString);
-        setDate(dateString);
+        setDate(getTodayString());
         
         // If currentUser is generic 'all' (Home View), default to the first real user
         if (currentUser.id === 'all' && users.length > 0) {

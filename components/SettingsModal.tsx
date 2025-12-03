@@ -156,7 +156,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const updateAiConfig = (field: 'apiKey' | 'baseUrl' | 'model', value: string) => {
       const active = aiSettings.activeProvider;
       // SAFE ACCESS: Ensure configs exists
-      const currentConfigs = aiSettings.configs || {};
+      const currentConfigs = aiSettings.configs;
       const activeConfig = currentConfigs[active] || {};
 
       setAiSettings({
@@ -472,7 +472,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <div className="flex justify-between mb-2">
                    <label className="text-sm font-medium text-slate-700">音调 (Pitch)</label>
-                   <span className="text-xs text-slate-500">{voiceSettings.pitch.toFixed(1)}</span>
+                   <span className="text-xs text-slate-500">{voiceSettings.pitch.toFixed(1)}x</span>
                 </div>
                 <input 
                   type="range" min="0.5" max="2" step="0.1" 
