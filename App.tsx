@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI } from './constants';
-import { User, Reminder, VoiceSettings, AISettings } from './types';
+import { User, Reminder, VoiceSettings, AISettings, AIProvider } from './types';
 import VoiceInput from './components/VoiceInput';
 import AlarmOverlay from './components/AlarmOverlay';
 import ManualInputModal from './components/ManualInputModal';
@@ -87,15 +87,58 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 };
   });
 
-  // AI Settings State
+  // AI Settings State with Migration Logic
   const [aiSettings, setAiSettings] = useState<AISettings>(() => {
     const saved = localStorage.getItem('family_ai_settings');
-    return saved ? JSON.parse(saved) : { 
-        provider: 'gemini', 
-        apiKey: '', 
-        baseUrl: '', 
-        model: 'gemini-2.5-flash' 
+    const defaultSettings: AISettings = { 
+        activeProvider: 'gemini',
+        configs: {
+            gemini: { apiKey: '', baseUrl: '', model: 'gemini-2.5-flash' },
+            deepseek: { apiKey: '', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
+            moonshot: { apiKey: '', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+            siliconflow: { apiKey: '', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct' },
+            custom: { apiKey: '', baseUrl: 'http://localhost:11434/v1', model: 'llama3' }
+        }
     };
+
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            
+            // Check if it is the old flat structure (missing 'configs')
+            if (!parsed.configs) {
+                console.log("Migrating legacy AI settings...");
+                const oldProvider = (parsed.provider || 'gemini') as AIProvider;
+                const oldKey = parsed.apiKey || '';
+                const oldBaseUrl = parsed.baseUrl || '';
+                const oldModel = parsed.model || '';
+
+                // Migrate the old key to the correct provider slot
+                const newSettings = { ...defaultSettings };
+                newSettings.activeProvider = oldProvider;
+                
+                // Update the specific config for the active provider with old values
+                newSettings.configs[oldProvider] = {
+                    apiKey: oldKey,
+                    baseUrl: oldBaseUrl || newSettings.configs[oldProvider].baseUrl,
+                    model: oldModel || newSettings.configs[oldProvider].model
+                };
+                
+                return newSettings;
+            }
+            
+            // Ensure all providers exist even if loading from a slightly older version of new struct
+            return {
+                ...defaultSettings,
+                ...parsed,
+                configs: { ...defaultSettings.configs, ...parsed.configs }
+            };
+        } catch (e) {
+            console.error("Failed to parse AI settings, resetting to default", e);
+            return defaultSettings;
+        }
+    }
+    return defaultSettings;
   });
 
   const [activeReminders, setActiveReminders] = useState<Reminder[]>([]);

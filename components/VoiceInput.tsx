@@ -48,9 +48,12 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
     }
   }, []);
 
+  const activeConfig = aiSettings.configs[aiSettings.activeProvider];
+
   const toggleListening = () => {
-    if (!aiSettings.apiKey) {
-        alert("请先在设置中配置 AI API Key");
+    // Basic check if API Key is present for the active provider (except custom)
+    if (!activeConfig.apiKey && aiSettings.activeProvider !== 'custom') {
+        alert(`请先在设置中配置 ${aiSettings.activeProvider} 的 API Key`);
         return;
     }
     if (isListening) {
@@ -69,7 +72,15 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       // Pass today's date so the AI knows what "tomorrow" means
       const todayStr = new Date().toISOString().split('T')[0];
       
-      const result = await parseReminderWithGemini(text, currentUser.name, familyNames, todayStr, aiSettings);
+      const result = await parseReminderWithGemini(
+          text, 
+          currentUser.name, 
+          familyNames, 
+          todayStr, 
+          activeConfig, 
+          aiSettings.activeProvider
+      );
+
       if (result) {
         // Resolve user
         let targetUserId = currentUser.id;

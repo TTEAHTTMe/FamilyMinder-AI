@@ -103,39 +103,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // --- AI Handlers ---
   const handleProviderChange = (provider: AIProvider) => {
-      let defaultBaseUrl = '';
-      let defaultModel = '';
-      
-      switch(provider) {
-          case 'deepseek':
-              defaultBaseUrl = 'https://api.deepseek.com';
-              defaultModel = 'deepseek-chat';
-              break;
-          case 'moonshot':
-              defaultBaseUrl = 'https://api.moonshot.cn/v1';
-              defaultModel = 'moonshot-v1-8k';
-              break;
-          case 'siliconflow':
-              defaultBaseUrl = 'https://api.siliconflow.cn/v1';
-              defaultModel = 'Qwen/Qwen2.5-7B-Instruct'; // Free model
-              break;
-          case 'custom':
-              defaultBaseUrl = 'http://localhost:11434/v1';
-              defaultModel = 'llama3';
-              break;
-          case 'gemini':
-          default:
-              defaultModel = 'gemini-2.5-flash';
-              break;
-      }
+      setAiSettings({ ...aiSettings, activeProvider: provider });
+  };
 
+  // Helper to update specific config fields for the active provider
+  const updateAiConfig = (field: 'apiKey' | 'baseUrl' | 'model', value: string) => {
+      const active = aiSettings.activeProvider;
       setAiSettings({
           ...aiSettings,
-          provider,
-          baseUrl: defaultBaseUrl,
-          model: defaultModel
+          configs: {
+              ...aiSettings.configs,
+              [active]: {
+                  ...aiSettings.configs[active],
+                  [field]: value
+              }
+          }
       });
   };
+  
+  const currentConfig = aiSettings.configs[aiSettings.activeProvider];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">
@@ -336,28 +322,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                      <div className="grid grid-cols-2 gap-3">
                          <button
                              onClick={() => handleProviderChange('gemini')}
-                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${aiSettings.provider === 'gemini' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${aiSettings.activeProvider === 'gemini' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                          >
                              <span className="font-bold">Google</span>
                              <span className="text-[10px]">海外 (Gemini)</span>
                          </button>
                          <button
                              onClick={() => handleProviderChange('deepseek')}
-                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${aiSettings.provider === 'deepseek' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${aiSettings.activeProvider === 'deepseek' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                          >
                              <span className="font-bold">DeepSeek</span>
                              <span className="text-[10px]">国内 (V3/R1)</span>
                          </button>
                          <button
                              onClick={() => handleProviderChange('moonshot')}
-                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${aiSettings.provider === 'moonshot' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${aiSettings.activeProvider === 'moonshot' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                          >
                              <span className="font-bold">Kimi</span>
                              <span className="text-[10px]">Moonshot</span>
                          </button>
                          <button
                              onClick={() => handleProviderChange('siliconflow')}
-                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 relative ${aiSettings.provider === 'siliconflow' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 relative ${aiSettings.activeProvider === 'siliconflow' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                          >
                              <div className="absolute top-1 right-1 bg-green-500 text-white text-[9px] px-1 rounded font-bold">免费</div>
                              <span className="font-bold">硅基流动</span>
@@ -365,7 +351,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                          </button>
                          <button
                              onClick={() => handleProviderChange('custom')}
-                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 col-span-2 ${aiSettings.provider === 'custom' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                             className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 col-span-2 ${aiSettings.activeProvider === 'custom' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                          >
                              <span className="font-bold">Custom (Ollama/其他)</span>
                              <span className="text-[10px]">OpenAI 兼容接口</span>
@@ -374,30 +360,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                  </div>
 
                  <div>
-                     <label className="block text-sm font-medium text-slate-700 mb-2">API Key</label>
+                     <label className="block text-sm font-medium text-slate-700 mb-2">API Key ({aiSettings.activeProvider})</label>
                      <input
                          type="password"
-                         value={aiSettings.apiKey}
-                         onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
-                         placeholder={aiSettings.provider === 'custom' ? "本地服务可为空" : "输入您的 API Key"}
+                         value={currentConfig.apiKey || ''}
+                         onChange={(e) => updateAiConfig('apiKey', e.target.value)}
+                         placeholder={aiSettings.activeProvider === 'custom' ? "本地服务可为空" : "输入您的 API Key"}
                          className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500"
                      />
                      <div className="text-xs text-slate-400 mt-1 flex flex-wrap gap-2">
-                         {aiSettings.provider === 'gemini' && <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Google API Key</a>}
-                         {aiSettings.provider === 'deepseek' && <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 DeepSeek Key</a>}
-                         {aiSettings.provider === 'moonshot' && <a href="https://platform.moonshot.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Moonshot Key</a>}
-                         {aiSettings.provider === 'siliconflow' && <a href="https://cloud.siliconflow.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取硅基流动 Key (含免费)</a>}
+                         {aiSettings.activeProvider === 'gemini' && <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Google API Key</a>}
+                         {aiSettings.activeProvider === 'deepseek' && <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 DeepSeek Key</a>}
+                         {aiSettings.activeProvider === 'moonshot' && <a href="https://platform.moonshot.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取 Moonshot Key</a>}
+                         {aiSettings.activeProvider === 'siliconflow' && <a href="https://cloud.siliconflow.cn/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">获取硅基流动 Key (含免费)</a>}
                      </div>
                  </div>
                  
-                 {aiSettings.provider !== 'gemini' && (
+                 {aiSettings.activeProvider !== 'gemini' && (
                     <div className="animate-fade-in space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">Base URL (API 地址)</label>
                             <input
                                 type="text"
-                                value={aiSettings.baseUrl}
-                                onChange={(e) => setAiSettings({ ...aiSettings, baseUrl: e.target.value })}
+                                value={currentConfig.baseUrl || ''}
+                                onChange={(e) => updateAiConfig('baseUrl', e.target.value)}
                                 placeholder="https://..."
                                 className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm font-mono"
                             />
@@ -406,8 +392,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                              <label className="block text-sm font-medium text-slate-700 mb-2">Model (模型名称)</label>
                              <input
                                  type="text"
-                                 value={aiSettings.model}
-                                 onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
+                                 value={currentConfig.model || ''}
+                                 onChange={(e) => updateAiConfig('model', e.target.value)}
                                  placeholder="e.g. gpt-3.5-turbo"
                                  className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm font-mono"
                              />

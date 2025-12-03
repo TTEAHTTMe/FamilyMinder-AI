@@ -34,9 +34,15 @@ export interface VoiceSettings {
 
 export type AIProvider = 'gemini' | 'deepseek' | 'moonshot' | 'siliconflow' | 'custom';
 
-export interface AISettings {
-  provider: AIProvider;
+export interface AIConfig {
   apiKey: string;
-  baseUrl: string; // For DeepSeek or custom proxy
-  model: string;   // e.g., 'gemini-2.5-flash' or 'deepseek-chat'
+  baseUrl: string;
+  model: string;
+}
+
+export interface AISettings {
+  activeProvider: AIProvider;
+  configs: {
+    [key in AIProvider]: AIConfig;
+  };
 }

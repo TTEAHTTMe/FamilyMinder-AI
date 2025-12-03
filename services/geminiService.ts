@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { ParsedReminder, AISettings } from "../types";
+import { ParsedReminder, AIConfig } from "../types";
 
 // Helper for OpenAI-compatible APIs (DeepSeek, Moonshot, SiliconFlow, Ollama/Custom)
 const callOpenAICompatible = async (
@@ -49,12 +49,12 @@ export const parseReminderWithGemini = async (
     currentUserName: string, 
     validUserNames?: string[], 
     referenceDate?: string,
-    aiSettings?: AISettings
+    aiConfig?: AIConfig,
+    providerType?: string // 'gemini' | others
 ): Promise<ParsedReminder | null> => {
 
   // For custom local LLMs (like Ollama), apiKey might be optional, but we check generally.
-  // We'll relax the check for 'custom' if the user knows what they are doing, but typically some key is sent.
-  if (!aiSettings || (!aiSettings.apiKey && aiSettings.provider !== 'custom')) {
+  if (!aiConfig || (!aiConfig.apiKey && providerType !== 'custom')) {
     throw new Error("请先在设置中配置 API Key");
   }
 
@@ -72,37 +72,21 @@ export const parseReminderWithGemini = async (
       - Return time in 24-hour HH:mm format.`;
   
   // --- OPENAI COMPATIBLE PROVIDERS ---
-  if (['deepseek', 'moonshot', 'siliconflow', 'custom'].includes(aiSettings.provider)) {
-      let baseUrl = aiSettings.baseUrl;
-      let model = aiSettings.model;
-
-      // Set defaults if missing (Auto-configuration logic)
-      if (aiSettings.provider === 'deepseek') {
-          baseUrl = baseUrl || 'https://api.deepseek.com';
-          model = model || 'deepseek-chat';
-      } else if (aiSettings.provider === 'moonshot') {
-          baseUrl = baseUrl || 'https://api.moonshot.cn/v1';
-          model = model || 'moonshot-v1-8k';
-      } else if (aiSettings.provider === 'siliconflow') {
-          baseUrl = baseUrl || 'https://api.siliconflow.cn/v1';
-          // A popular free model on SiliconFlow
-          model = model || 'Qwen/Qwen2.5-7B-Instruct'; 
-      }
-
+  if (providerType && providerType !== 'gemini') {
       return callOpenAICompatible(
           systemPrompt, 
           text, 
-          aiSettings.apiKey, 
-          baseUrl, 
-          model
+          aiConfig.apiKey, 
+          aiConfig.baseUrl, 
+          aiConfig.model
       );
   }
 
   // --- GOOGLE GEMINI ---
   try {
-    const ai = new GoogleGenAI({ apiKey: aiSettings.apiKey });
+    const ai = new GoogleGenAI({ apiKey: aiConfig.apiKey });
     const response = await ai.models.generateContent({
-      model: aiSettings.model || "gemini-2.5-flash",
+      model: aiConfig.model || "gemini-2.5-flash",
       contents: `${systemPrompt}
       Analyze this spoken request: "${text}".`,
       config: {
