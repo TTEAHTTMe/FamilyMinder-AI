@@ -52,8 +52,8 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   // Speech Cycle Logic
   useEffect(() => {
     const speak = () => {
-      // SAFETY CHECK: If browser doesn't support speech, exit early
-      if (!('speechSynthesis' in window)) return;
+      // SAFETY CHECK: Strict check for window.speechSynthesis
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
       // Build a combined sentence for everyone
       let combinedText = "";
@@ -101,7 +101,7 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
 
     return () => {
         clearInterval(interval);
-        if ('speechSynthesis' in window) {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.cancel();
         }
     };

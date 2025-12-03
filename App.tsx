@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
+import React, { useState, useEffect, useRef, ErrorInfo, Component } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider } from './types';
 import VoiceInput from './components/VoiceInput';
@@ -19,11 +19,14 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null
-  };
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -427,8 +430,8 @@ const AppContent: React.FC = () => {
       setActiveReminders(prev => {
           const next = prev.filter(r => r.id !== id);
           if (next.length === 0) {
-              // Safety Check for Speech API
-              if ('speechSynthesis' in window) {
+              // Safety Check for Speech API - STRICT CHECK
+              if (typeof window !== 'undefined' && window.speechSynthesis) {
                   const msg = new SpeechSynthesisUtterance("太棒了，所有任务已完成！");
                   msg.lang = 'zh-CN';
                   if (voiceSettings.voiceURI) {

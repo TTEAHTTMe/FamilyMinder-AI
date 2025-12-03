@@ -37,18 +37,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Load voices safely
   useEffect(() => {
     const loadVoices = () => {
-      if (!('speechSynthesis' in window)) return;
+      // STRICT CHECK: Ensure synthesis exists and is valid
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
+      
       const voices = window.speechSynthesis.getVoices();
       const zhVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN'));
       setAvailableVoices(zhVoices.length > 0 ? zhVoices : voices);
     };
 
-    if ('speechSynthesis' in window) {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
     }
     return () => { 
-        if ('speechSynthesis' in window) {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
             window.speechSynthesis.onvoiceschanged = null; 
         }
     };
@@ -95,8 +97,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // --- Voice Handlers ---
   const handleTestVoice = () => {
-    if (!('speechSynthesis' in window)) {
-        alert("您的浏览器不支持语音功能。");
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+        alert("您的浏览器不支持语音功能 (TTS)。");
         return;
     }
 
