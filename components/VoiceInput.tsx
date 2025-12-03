@@ -26,13 +26,15 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [interimText, setInterimText] = useState(''); // Text currently being spoken
+  const [inputText, setInputText] = useState(''); // Text currently being typed
   const [messages, setMessages] = useState<ChatMessage[]>([
-      { id: 0, role: 'assistant', text: '我是您的家庭智能助手。请告诉我需要提醒什么？\n例如：“明天早上8点提醒爷爷吃药”' }
+      { id: 0, role: 'assistant', text: '我是您的家庭智能助手。您可以直接打字，或点击麦克风说话。\n例如：“明天早上8点提醒爷爷吃药”' }
   ]);
   const [hasSpeechSupport, setHasSpeechSupport] = useState(false);
   
   const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   // Latest props ref to avoid stale closures
   const latestPropsRef = useRef({ currentUser, users, aiSettings, voiceSettings });
@@ -172,6 +174,19 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       }
   };
 
+  const handleSendText = () => {
+      if (!inputText.trim()) return;
+      handleUserSpeechComplete(inputText.trim());
+      setInputText('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSendText();
+      }
+  };
+
   const handleUserSpeechComplete = async (text: string) => {
       if (!text.trim()) return;
       
@@ -274,7 +289,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 
   return (
     <>
-        {/* Floating Bar (Always Visible) */}
+        {/* Floating Bar (Always Visible when closed) */}
         {!isOpen && (
              <div className="fixed bottom-6 left-0 right-0 flex justify-center z-40 px-4 pointer-events-none">
                 <div className="w-full max-w-sm flex items-end gap-3 pointer-events-auto">
@@ -282,7 +297,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                         onClick={onManualInput}
                         className="flex-1 bg-white hover:bg-slate-50 text-slate-700 h-16 rounded-2xl shadow-xl border border-slate-100 flex items-center justify-center gap-3 transition-transform active:scale-95"
                     >
-                        <i className="fa-solid fa-keyboard text-xl"></i>
+                        <i className="fa-solid fa-pen-to-square text-xl"></i>
                         <span className="font-bold text-lg">手动添加</span>
                     </button>
                     <button
@@ -300,25 +315,36 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
             <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
                 
                 {/* The Window Container */}
-                <div className="bg-slate-100 w-full md:w-[500px] h-[85vh] md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative">
+                <div className="bg-slate-100 w-full md:w-[500px] h-[90vh] md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative">
                     
                     {/* Header */}
-                    <div className="bg-white px-5 py-4 shadow-sm flex items-center justify-between flex-shrink-0 z-10">
+                    <div className="bg-white px-4 py-3 shadow-sm flex items-center justify-between flex-shrink-0 z-10 border-b border-slate-100">
                         <div className="flex items-center gap-2">
-                            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                                <i className="fa-solid fa-robot text-lg"></i>
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                <i className="fa-solid fa-robot text-sm"></i>
                             </div>
                             <div>
-                                <h3 className="font-bold text-slate-800 leading-tight">AI 助手</h3>
+                                <h3 className="font-bold text-slate-800 text-sm leading-tight">AI 助手</h3>
                                 <p className="text-[10px] text-slate-400">Powered by {aiSettings.activeProvider}</p>
                             </div>
                         </div>
-                        <button 
-                            onClick={toggleAssistant} 
-                            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors"
-                        >
-                            <i className="fa-solid fa-times text-lg"></i>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => { 
+                                    setMessages([{ id: Date.now(), role: 'assistant', text: '已清空上下文，请重新开始。' }]);
+                                }}
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-200 transition-colors"
+                                title="清空对话"
+                            >
+                                <i className="fa-solid fa-trash-can text-sm"></i>
+                            </button>
+                            <button 
+                                onClick={toggleAssistant} 
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            >
+                                <i className="fa-solid fa-chevron-down text-sm"></i>
+                            </button>
+                        </div>
                     </div>
 
                     {/* Chat Area */}
@@ -405,37 +431,51 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                         <div ref={chatEndRef}></div>
                     </div>
 
-                    {/* Bottom Controls */}
-                    <div className="p-4 bg-white border-t border-slate-100 flex items-center justify-center gap-6 flex-shrink-0 pb-8 md:pb-6">
+                    {/* Bottom Input Area */}
+                    <div className="p-3 bg-white border-t border-slate-100 flex items-end gap-3 flex-shrink-0 pb-8 md:pb-6">
+                        {/* Switch to Form Button */}
                         <button 
                              onClick={() => { toggleAssistant(); onManualInput(); }}
-                             className="w-12 h-12 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
-                             title="切换手动输入"
+                             className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0"
+                             title="切换填表模式"
                         >
-                            <i className="fa-solid fa-keyboard text-lg"></i>
+                            <i className="fa-solid fa-list-check text-lg"></i>
                         </button>
                         
-                        <div className="relative">
-                            {isListening && <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-20"></div>}
-                            <button
-                                onClick={handleMicClick}
-                                className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-xl transition-all active:scale-95 z-10 relative
-                                    ${isListening ? 'bg-red-500 text-white ring-4 ring-red-100' : 'bg-blue-600 text-white hover:bg-blue-700 ring-4 ring-blue-50'}
-                                `}
-                            >
-                                <i className={`fa-solid ${isListening ? 'fa-stop' : 'fa-microphone'}`}></i>
-                            </button>
+                        {/* Text Input */}
+                        <div className="flex-1 bg-slate-50 rounded-2xl border border-slate-200 focus-within:bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all flex items-center px-4 min-h-[48px] py-2">
+                             <input
+                                ref={inputRef}
+                                type="text"
+                                value={inputText}
+                                onChange={(e) => setInputText(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="输入文字或点击麦克风..."
+                                className="w-full bg-transparent outline-none text-slate-700 text-base"
+                                disabled={isListening || isProcessing}
+                             />
                         </div>
 
-                        <button 
-                             onClick={() => { 
-                                 setMessages([{ id: Date.now(), role: 'assistant', text: '已清空上下文，请重新开始。' }]);
-                             }}
-                             className="w-12 h-12 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
-                             title="清空对话"
-                        >
-                            <i className="fa-solid fa-trash-can text-lg"></i>
-                        </button>
+                        {/* Action Button: Send OR Mic */}
+                        {inputText.trim() ? (
+                             <button
+                                onClick={handleSendText}
+                                disabled={isProcessing}
+                                className="w-12 h-12 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200 flex items-center justify-center transition-transform active:scale-95 flex-shrink-0"
+                             >
+                                <i className="fa-solid fa-paper-plane text-lg"></i>
+                             </button>
+                        ) : (
+                             <button
+                                onClick={handleMicClick}
+                                disabled={isProcessing}
+                                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-lg transition-all active:scale-95 flex-shrink-0
+                                    ${isListening ? 'bg-red-500 text-white shadow-red-200 animate-pulse' : 'bg-blue-600 text-white shadow-blue-200'}
+                                `}
+                             >
+                                <i className={`fa-solid ${isListening ? 'fa-stop' : 'fa-microphone'}`}></i>
+                             </button>
+                        )}
                     </div>
                 </div>
             </div>
