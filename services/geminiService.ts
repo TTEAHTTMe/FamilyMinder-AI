@@ -3,22 +3,36 @@ import { ParsedReminder, AIConfig } from "../types";
 
 // Helper to extract JSON from text (handles Markdown code blocks and chatty responses)
 const extractJsonFromText = (text: string): ParsedReminder => {
-    try {
-        // 1. Try direct parse first
-        return JSON.parse(text) as ParsedReminder;
-    } catch (e) {
-        // 2. Try extracting from markdown code blocks ```json ... ``` or just {...}
-        // Match the first valid JSON object structure
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try {
-                return JSON.parse(jsonMatch[0]) as ParsedReminder;
-            } catch (e2) {
-                console.error("Extracted block is not valid JSON", e2);
-            }
-        }
-        throw new Error("Could not extract valid JSON from response. Raw: " + text.substring(0, 100));
+    let cleanText = text;
+
+    // 1. Try to extract from markdown code blocks first (e.g. ```json ... ```)
+    // This is very common with Qwen/GLM models
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch && codeBlockMatch[1]) {
+        cleanText = codeBlockMatch[1];
     }
+
+    // 2. Locate the outermost JSON object bounds
+    const firstBrace = cleanText.indexOf('{');
+    const lastBrace = cleanText.lastIndexOf('}');
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const potentialJson = cleanText.substring(firstBrace, lastBrace + 1);
+        try {
+            return JSON.parse(potentialJson) as ParsedReminder;
+        } catch (e) {
+            console.error("Extracted block is not valid JSON", e);
+        }
+    }
+
+    // 3. Last resort: Try parsing the whole text (sometimes models just return JSON)
+    try {
+        return JSON.parse(cleanText) as ParsedReminder;
+    } catch (e) {
+        // Fall through to error
+    }
+
+    throw new Error(`无法从 AI 回复中提取 JSON。原始回复: ${text.substring(0, 100)}...`);
 };
 
 // Helper for OpenAI-compatible APIs (DeepSeek, Moonshot, SiliconFlow, Ollama/Custom)
@@ -31,7 +45,7 @@ const callOpenAICompatible = async (
 ): Promise<ParsedReminder> => {
     // Controller for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased to 45s for slower models
 
     try {
         // Ensure no trailing slash
@@ -48,12 +62,11 @@ const callOpenAICompatible = async (
             body: JSON.stringify({
                 model: model,
                 messages: [
-                    { role: 'system', content: systemPrompt + `\nIMPORTANT: Return ONLY the JSON object. Do not include markdown formatting like \`\`\`json.` },
+                    { role: 'system', content: systemPrompt },
                     { role: 'user', content: userText }
                 ],
-                // REMOVED response_format: { type: 'json_object' } 
-                // Many models (SiliconFlow Qwen, old DeepSeek) crash with this parameter.
-                // We handle JSON extraction manually instead.
+                // CRITICAL: response_format is NOT supported by many open source models (Qwen, etc.) on SiliconFlow.
+                // Do NOT include it. We rely on the prompt and extractJsonFromText.
                 temperature: 0.1
             }),
             signal: controller.signal
@@ -80,7 +93,7 @@ const callOpenAICompatible = async (
         clearTimeout(timeoutId);
         console.error("OpenAI Compatible API Error:", error);
         if (error.name === 'AbortError') {
-            throw new Error("AI 请求超时 (30秒)，请检查网络或更换模型");
+            throw new Error("AI 请求超时 (45秒)，请检查网络或更换模型");
         }
         throw error;
     }
@@ -104,15 +117,25 @@ export const parseReminderWithGemini = async (
   const validNamesStr = validUserNames ? `Valid family members: ${validUserNames.join(', ')}.` : '';
 
   const systemPrompt = `Current context: User is "${currentUserName}". Today is ${todayStr}. ${validNamesStr}
-      Analyze this spoken request.
-      Extract the reminder details.
-      - If no time is specified, default to current time + 5 minutes.
-      - If no user is specified by name (e.g. "remind grandpa"), assume it is for the current user.
-      - If a specific name from the valid family members list is mentioned, strictly use that name as targetUser.
-      - If it involves medicine, pills, or health, set type to 'medication'.
-      - Extract the date if mentioned (e.g. "tomorrow", "next friday"). Return date in YYYY-MM-DD format. If no date mentioned, use today's date (${todayStr}).
-      - Return time in 24-hour HH:mm format.
-      - Return STRICT valid JSON.`;
+      Analyze the spoken request and extract reminder details into a JSON object.
+      
+      Rules:
+      1. Default time: current time + 5 mins if unspecified.
+      2. Default user: "${currentUserName}" if unspecified.
+      3. If a valid family member name is mentioned, use it as 'targetUser'.
+      4. Type: 'medication' (for pills/health), 'general', or 'activity'.
+      5. Date: YYYY-MM-DD format. Default to ${todayStr}.
+      6. Time: HH:mm (24-hour).
+      
+      IMPORTANT: Return ONLY the JSON object. No markdown, no explanations.
+      Example format:
+      {
+        "title": "Eat apple",
+        "time": "14:00",
+        "date": "2023-10-27",
+        "targetUser": "Dad",
+        "type": "general"
+      }`;
   
   // --- OPENAI COMPATIBLE PROVIDERS ---
   if (providerType && providerType !== 'gemini') {
