@@ -202,6 +202,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           }
 
           const familyNames = allUsers.map(u => u.name);
+          // FIX: Use local time for date context so AI calculates "tomorrow" correctly
           const todayStr = getTodayString();
 
           console.log("Sending to AI...", text);
@@ -229,7 +230,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                           if (found) targetUserId = found.id;
                       }
                   } else if (curUser.id === 'all') {
-                      // Should be handled by AI prompt, but fallback just in case
+                      // Fallback if AI failed to identify ambiguous user
                       throw new Error("请指明这个提醒是给谁的？");
                   }
                   
@@ -290,18 +291,21 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
         {!isOpen && (
              <div className="fixed bottom-6 left-0 right-0 flex justify-center z-40 px-4 pointer-events-none">
                 <div className="w-full max-w-sm flex items-end gap-3 pointer-events-auto">
+                    {/* Replaced Manual Button with Input Field Integration */}
                     <button 
                         onClick={onManualInput}
-                        className="flex-1 bg-white hover:bg-slate-50 text-slate-700 h-16 rounded-2xl shadow-xl border border-slate-100 flex items-center justify-center gap-3 transition-transform active:scale-95"
+                        className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors shadow-lg border border-slate-100 flex-shrink-0"
+                        title="手动表单"
                     >
-                        <i className="fa-solid fa-pen-to-square text-xl"></i>
-                        <span className="font-bold text-lg">手动添加</span>
+                        <i className="fa-solid fa-list-check text-lg"></i>
                     </button>
+
                     <button
                         onClick={toggleAssistant}
-                        className="h-16 w-16 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 flex items-center justify-center transition-transform active:scale-95"
+                        className="h-16 flex-1 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 flex items-center justify-center gap-3 transition-transform active:scale-95"
                     >
                         <i className="fa-solid fa-microphone text-2xl"></i>
+                        <span className="font-bold text-lg">AI 语音 / 对话</span>
                     </button>
                 </div>
              </div>
@@ -328,6 +332,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                                     setMessages([{ id: Date.now(), role: 'assistant', text: '已清空上下文，请重新开始。' }]);
                                 }}
                                 className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-200 transition-colors"
+                                title="清空对话"
                             >
                                 <i className="fa-solid fa-trash-can text-sm"></i>
                             </button>
@@ -350,38 +355,39 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                                     </div>
                                 )}
 
-                                <div className={`max-w-[85%] space-y-2`}>
+                                <div className={`w-full max-w-[85%] space-y-2`}>
                                     {msg.text && (
                                         <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm
                                             ${msg.role === 'user' 
-                                                ? 'bg-blue-600 text-white rounded-br-none' 
-                                                : msg.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-none' : 'bg-white text-slate-700 rounded-bl-none'}
+                                                ? 'bg-blue-600 text-white rounded-br-none ml-auto w-fit' 
+                                                : msg.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-none w-fit' : 'bg-white text-slate-700 rounded-bl-none w-fit'}
                                         `}>
                                             {msg.text}
                                         </div>
                                     )}
 
                                     {msg.type === 'success-card' && msg.data && (
-                                        <div className="bg-white rounded-2xl p-4 shadow-md border-l-4 border-green-500 overflow-hidden animate-scale-in">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <span className="text-xs font-bold text-green-600 uppercase tracking-wide">
-                                                    <i className="fa-solid fa-check-circle mr-1"></i>
-                                                    提醒已创建
+                                        <div className="w-full bg-white rounded-3xl p-5 shadow-lg border-l-8 border-green-500 overflow-hidden animate-scale-in">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <span className="text-sm font-bold text-green-600 uppercase tracking-wide flex items-center gap-1">
+                                                    <i className="fa-solid fa-circle-check text-lg"></i>
+                                                    添加成功
                                                 </span>
                                             </div>
-                                            <h4 className="font-bold text-lg text-slate-800 mb-2">{msg.data.title}</h4>
-                                            <div className="text-sm text-slate-600 flex flex-col gap-1.5">
-                                                <div className="flex items-center gap-2">
-                                                    <i className="fa-regular fa-clock text-slate-400 w-4 text-center"></i> 
-                                                    <span className="font-mono font-bold text-slate-700">{msg.data.time}</span>
+                                            <h4 className="font-bold text-2xl text-slate-800 mb-3 leading-tight">{msg.data.title}</h4>
+                                            
+                                            <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100">
+                                                <div className="bg-slate-50 p-2 rounded-xl">
+                                                    <div className="text-xs text-slate-400 mb-1">时间</div>
+                                                    <div className="font-mono text-xl font-bold text-slate-700">{msg.data.time}</div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <i className="fa-regular fa-calendar text-slate-400 w-4 text-center"></i>
-                                                    <span>{msg.data.date}</span>
+                                                <div className="bg-slate-50 p-2 rounded-xl">
+                                                    <div className="text-xs text-slate-400 mb-1">成员</div>
+                                                    <div className="font-bold text-base text-slate-700 truncate">{msg.data.targetUserName}</div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <i className="fa-solid fa-user text-slate-400 w-4 text-center"></i>
-                                                    <span className="bg-slate-100 px-2 rounded text-xs py-0.5">{msg.data.targetUserName}</span>
+                                                <div className="col-span-2 bg-slate-50 p-2 rounded-xl flex items-center gap-2">
+                                                    <div className="text-xs text-slate-400">日期</div>
+                                                    <div className="font-bold text-base text-slate-700">{msg.data.date}</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -415,6 +421,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
                         <button 
                              onClick={() => { toggleAssistant(); onManualInput(); }}
                              className="w-12 h-12 rounded-2xl bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0"
+                             title="切换到传统表单"
                         >
                             <i className="fa-solid fa-list-check text-lg"></i>
                         </button>

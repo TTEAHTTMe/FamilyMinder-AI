@@ -111,8 +111,8 @@ export const parseReminderWithGemini = async (
   const validNamesStr = validUserNames ? validUserNames.join(', ') : '';
   
   // Logic to determine if we are in "Home Mode" (generic context) or "User Mode"
-  const isHomeContext = currentUserName === '全家人' || currentUserName === 'all';
-
+  // If currentUserName is '全家人' or 'all', we are in Home Mode.
+  
   const systemPrompt = `
       You are a smart family assistant. Your job is to classify the user's intent and return a JSON object.
       
@@ -121,35 +121,44 @@ export const parseReminderWithGemini = async (
       - Valid Family Members: [${validNamesStr}]
       - Today's Date: ${todayStr}
       
+      --------------------------------------------------
+      CRITICAL RULE: "HOME MODE" AMBIGUITY CHECK
+      IF Current User View is "全家人" (Home Mode):
+         - The user MUST explicitly say a name (e.g., "Dad", "Grandpa").
+         - Words like "I", "Me", "We", "My" (我, 咱们) are AMBIGUOUS.
+         - IF no explicit name is found: YOU MUST STOP.
+         - Return action: "chat_response" asking "Who is this for?".
+         - DO NOT GUESS. DO NOT DEFAULT to the first user.
+      --------------------------------------------------
+
       Task:
       Analyze the input: "${text}"
       
-      Scenario A: USER WANTS TO CREATE A REMINDER
-      If the user clearly asks to set a reminder (e.g., "Remind Dad to eat pills", "Call me at 8"), return:
+      Scenario A: USER WANTS TO CREATE A REMINDER (AND TARGET IS CLEAR)
+      If the user clearly asks to set a reminder AND the target is clear (based on rules above), return:
       {
         "action": "create_reminder",
         "reminder": {
           "title": "Short title",
           "time": "HH:mm" (24h, default to now+5min),
           "date": "YYYY-MM-DD" (default to ${todayStr}),
-          "targetUser": "Name" (see rules below),
+          "targetUser": "Name",
           "type": "medication" | "general" | "activity"
         }
       }
       
-      Scenario B: CASUAL CHAT or AMBIGUOUS INPUT
-      If the user says "Hello", "How are you", or provides incomplete info that makes creating a reminder impossible/dangerous, return:
+      Scenario B: AMBIGUOUS INPUT / CASUAL CHAT
+      If the user says "Hello", or is in Home Mode but didn't say a name (e.g. "Wake me up"), return:
       {
         "action": "chat_response",
-        "replyText": "Your helpful reply here in Chinese"
+        "replyText": "请问是提醒谁？ (or conversational reply)"
       }
 
-      CRITICAL RULES FOR "targetUser":
-      1. If a valid family member name is mentioned in the text, ALWAYS use it.
-      2. If NO name is mentioned:
-         - If Current User View is a specific person (not "全家人"), default to that person.
-         - If Current User View is "全家人" (Home Mode), YOU MUST NOT GUESS. Return "action": "chat_response" and ask: "请问这个提醒是给谁的？" (Who is this for?).
-
+      Examples:
+      1. (Home Mode) "Wake me up at 8" -> {"action": "chat_response", "replyText": "请问是提醒谁八点起床？"}
+      2. (Dad's View) "Wake me up at 8" -> {"action": "create_reminder", "reminder": {"targetUser": "Dad", ...}}
+      3. (Home Mode) "Remind Grandpa to eat" -> {"action": "create_reminder", "reminder": {"targetUser": "Grandpa", ...}}
+      
       IMPORTANT: Return ONLY the JSON object. No markdown.
       `;
   
