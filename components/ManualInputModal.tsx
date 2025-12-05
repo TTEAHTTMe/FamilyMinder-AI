@@ -30,14 +30,12 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
   const [type, setType] = useState<string>('general');
   const [recurrence, setRecurrence] = useState<Reminder['recurrence']>('once');
   
-  // Time selectors
   const [hour, setHour] = useState('08');
   const [minute, setMinute] = useState('00');
 
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
-        // Edit mode
         setTitle(initialData.title);
         const [h, m] = initialData.time.split(':');
         setHour(h || '08');
@@ -47,7 +45,6 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         setType(initialData.type);
         setRecurrence(initialData.recurrence || 'once');
       } else {
-        // Create mode
         setTitle('');
         const now = new Date();
         setHour(String(now.getHours()).padStart(2, '0'));
@@ -101,7 +98,6 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         
         <form onSubmit={handleSubmit} className="p-4 landscape:p-3 overflow-y-auto">
           <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4 landscape:gap-3">
-            {/* Left Column */}
             <div className="space-y-3 landscape:space-y-2">
                 <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">内容</label>
@@ -160,7 +156,6 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
                 </div>
             </div>
 
-            {/* Right Column */}
             <div className="space-y-3 landscape:space-y-2 flex flex-col justify-between">
                 <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">重复频率</label>

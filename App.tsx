@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
+import React, { Component, useState, useEffect, useRef, ErrorInfo } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString, DEFAULT_REMINDER_TYPES } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings, ReminderTypeDefinition } from './types';
 import VoiceInput from './components/VoiceInput';
@@ -20,7 +20,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -477,7 +477,7 @@ const AppContent: React.FC = () => {
   const themeName = getColorName(userThemeColor);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row h-screen overflow-hidden">
+    <div className="min-h-screen h-[100dvh] bg-slate-50 flex flex-col md:flex-row overflow-hidden">
       
       <nav className={`
         flex-shrink-0 z-30 bg-white shadow-xl relative transition-all duration-300
@@ -614,7 +614,7 @@ const AppContent: React.FC = () => {
               </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-16 scrollbar-hide">
+          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-16 scrollbar-hide min-h-0">
               
               {viewMode === 'calendar' ? (
                   <CalendarView 

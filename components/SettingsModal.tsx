@@ -358,17 +358,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                      ))}
                  </div>
                  
-                 {aiSettings.activeProvider === 'gemini' ? (
-                     <div className="col-span-2">
-                        <label className="text-xs font-bold text-slate-500">API Key</label>
-                        <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
-                    </div>
-                 ) : (
-                    <div className="col-span-2">
-                        <label className="text-xs font-bold text-slate-500">API Key</label>
-                        <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
-                    </div>
-                 )}
+                 <div className="col-span-2">
+                    <label className="text-xs font-bold text-slate-500">API Key</label>
+                    <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                </div>
 
                  {aiSettings.activeProvider !== 'gemini' && aiSettings.activeProvider !== 'openai' && (
                     <>

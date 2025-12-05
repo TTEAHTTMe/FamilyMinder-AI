@@ -39,13 +39,11 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   }, [onSnooze]);
 
   const speakTextOpenAI = async (text: string) => {
-      // Prioritize "openai" specific config, otherwise fallback to active provider (if compatible)
       const ttsConfig = aiSettings.configs['openai'] || aiSettings.configs[aiSettings.activeProvider];
       const apiKey = ttsConfig?.apiKey;
       
-      // Simple fallback if no key
       if (!apiKey) {
-          console.warn("OpenAI TTS selected but no API Key found in OpenAI or Active settings.");
+          console.warn("OpenAI TTS selected but no API Key found.");
           return false;
       }
 
@@ -66,10 +64,7 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
                 voice: voiceSettings.voiceURI || 'alloy'
             })
         });
-        if (!response.ok) {
-             const errorText = await response.text();
-             throw new Error(`TTS Failed: ${response.status} ${errorText}`);
-        }
+        if (!response.ok) throw new Error("TTS Failed");
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
         const audio = new Audio(blobUrl);
@@ -89,22 +84,15 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
       reminders.forEach(r => {
           const u = users.find(user => user.id === r.userId);
           const userName = u ? u.name : '家人';
-          combinedText += `${userName}，请${r.title}。`;
+          combinedText += `${userName}，${r.title}。`;
       });
-      // Removed the repetitive "Please confirm ASAP" suffix here to reduce annoyance
-
-      // OpenAI TTS Path
+      
       if (voiceSettings.provider === 'openai') {
           if (audioRef.current) audioRef.current.volume = 0.2;
           const success = await speakTextOpenAI(combinedText);
-          if (success) {
-             // If OpenAI TTS plays successfully, we return and don't play browser TTS
-             return; 
-          }
-          // If OpenAI TTS failed (returned false), fall through to Browser TTS
+          if (success) return; 
       }
 
-      // Browser Fallback
       if (window.speechSynthesis && 'speechSynthesis' in window) {
           window.speechSynthesis.cancel();
           const msg = new SpeechSynthesisUtterance();
@@ -122,14 +110,14 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
           msg.onend = () => { if (audioRef.current) audioRef.current.volume = 1.0; };
           msg.onerror = () => { if (audioRef.current) audioRef.current.volume = 1.0; };
           
-          // GC FIX: Attach to window to prevent garbage collection
+          // GC FIX
           (window as any).currentUtterance = msg;
           window.speechSynthesis.speak(msg);
       }
     };
 
     speak();
-    const interval = setInterval(() => { speak(); setTicks(t => t + 1); }, 15000); // Increased interval to 15s
+    const interval = setInterval(() => { speak(); setTicks(t => t + 1); }, 15000); 
     return () => {
         clearInterval(interval);
         if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -140,7 +128,6 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-red-600/90 backdrop-blur-sm animate-pulse-ring p-4 landscape:p-2">
-      {/* Container: Flex Column on Portrait, Flex Row on Landscape (Redmi 3 optimization) */}
       <div className="bg-white rounded-3xl landscape:rounded-xl p-6 landscape:p-2 max-w-md landscape:max-w-2xl w-full shadow-2xl scale-100 max-h-[85vh] landscape:max-h-[95vh] flex flex-col landscape:flex-row gap-4 landscape:gap-2">
         
         {/* Header Section */}
@@ -151,7 +138,6 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
             </h2>
             <p className="text-xs text-slate-400 mt-1 mb-2">请确认</p>
             
-            {/* Global Snooze */}
             <div className="mt-2 landscape:mt-1">
                  {isGlobalSnoozeOpen ? (
                     <div className="grid grid-cols-2 gap-1 animate-fade-in">
@@ -170,7 +156,7 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
             </div>
         </div>
 
-        {/* Scrollable List of Alarms */}
+        {/* Scrollable List */}
         <div className="flex-1 overflow-y-auto landscape:w-2/3 px-1 scrollbar-hide space-y-3 landscape:space-y-2">
             {reminders.map(reminder => {
                 const user = users.find(u => u.id === reminder.userId);
@@ -178,7 +164,6 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
 
                 return (
                     <div key={reminder.id} className="bg-slate-50 border-2 border-red-100 rounded-2xl landscape:rounded-lg p-4 landscape:p-2 flex flex-col gap-3 landscape:gap-1 shadow-sm relative">
-                         {/* Info Row */}
                         <div className="flex items-center gap-3 landscape:gap-2">
                              <div className={`w-12 h-12 landscape:w-8 landscape:h-8 rounded-full flex items-center justify-center text-2xl landscape:text-sm ${user?.color || 'bg-gray-400'} text-white flex-shrink-0`}>
                                  {user?.avatar || '👤'}
@@ -196,7 +181,6 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
                              </div>
                         </div>
 
-                        {/* Action Buttons */}
                         {isMenuOpen ? (
                           <div className="grid grid-cols-4 gap-1">
                              {[5, 10, 30, 60].map(min => (
