@@ -14,6 +14,7 @@ export interface Reminder {
   date: string; // Format: "YYYY-MM-DD"
   isCompleted: boolean;
   type: 'medication' | 'general' | 'activity';
+  recurrence: 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   lastRemindedAt?: number; // Timestamp
   snoozeUntil?: number; // Timestamp
 }
@@ -24,6 +25,7 @@ export interface ParsedReminder {
   date: string; // Format: "YYYY-MM-DD"
   targetUser?: string; // AI implied user
   type: 'medication' | 'general' | 'activity';
+  recurrence?: 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 }
 
 // New Interface for Smart Intent Response

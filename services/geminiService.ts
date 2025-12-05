@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, AIConfig } from "../types";
 
@@ -143,10 +144,18 @@ export const parseReminderWithGemini = async (
           "time": "HH:mm" (24h, default to now+5min),
           "date": "YYYY-MM-DD" (default to ${todayStr}),
           "targetUser": "Name",
-          "type": "medication" | "general" | "activity"
+          "type": "medication" | "general" | "activity",
+          "recurrence": "once" | "daily" | "weekly" | "monthly" | "yearly"
         }
       }
       
+      RECURRENCE RULES:
+      - "Every day" -> "daily"
+      - "Every week", "Next Wednesday" -> "weekly"
+      - "Every month" -> "monthly"
+      - "Every year", "Birthday" -> "yearly"
+      - Default is "once".
+
       Scenario B: AMBIGUOUS INPUT / CASUAL CHAT
       If the user says "Hello", or is in Home Mode but didn't say a name (e.g. "Wake me up"), return:
       {
@@ -157,7 +166,7 @@ export const parseReminderWithGemini = async (
       Examples:
       1. (Home Mode) "Wake me up at 8" -> {"action": "chat_response", "replyText": "请问是提醒谁八点起床？"}
       2. (Dad's View) "Wake me up at 8" -> {"action": "create_reminder", "reminder": {"targetUser": "Dad", ...}}
-      3. (Home Mode) "Remind Grandpa to eat" -> {"action": "create_reminder", "reminder": {"targetUser": "Grandpa", ...}}
+      3. (Home Mode) "Remind Grandpa to eat every day" -> {"action": "create_reminder", "reminder": {"targetUser": "Grandpa", "recurrence": "daily", ...}}
       
       IMPORTANT: Return ONLY the JSON object. No markdown.
       `;
@@ -193,7 +202,8 @@ export const parseReminderWithGemini = async (
                  time: { type: Type.STRING },
                  date: { type: Type.STRING },
                  targetUser: { type: Type.STRING },
-                 type: { type: Type.STRING }
+                 type: { type: Type.STRING },
+                 recurrence: { type: Type.STRING, enum: ["once", "daily", "weekly", "monthly", "yearly"] }
                }
             },
             replyText: { type: Type.STRING }

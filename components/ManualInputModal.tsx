@@ -25,6 +25,7 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
   const [date, setDate] = useState('');
   const [selectedUserId, setSelectedUserId] = useState(currentUser.id);
   const [type, setType] = useState<Reminder['type']>('general');
+  const [recurrence, setRecurrence] = useState<Reminder['recurrence']>('once');
 
   useEffect(() => {
     if (isOpen) {
@@ -35,24 +36,21 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         setDate(initialData.date || getTodayString());
         setSelectedUserId(initialData.userId);
         setType(initialData.type);
+        setRecurrence(initialData.recurrence || 'once');
       } else {
         // Create mode
         setTitle('');
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        
-        // FIX: Use local date string helper instead of UTC
         setTime(timeString);
         setDate(getTodayString());
-        
-        // If currentUser is generic 'all' (Home View), default to the first real user
         if (currentUser.id === 'all' && users.length > 0) {
             setSelectedUserId(users[0].id);
         } else {
             setSelectedUserId(currentUser.id);
         }
-        
         setType('general');
+        setRecurrence('once');
       }
     }
   }, [isOpen, initialData, currentUser, users]);
@@ -69,122 +67,137 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
       date,
       userId: selectedUserId,
       type,
+      recurrence,
       isCompleted: initialData ? initialData.isCompleted : false
     });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in landscape:items-start landscape:pt-4 landscape:overflow-y-auto">
-      <div className="bg-white rounded-3xl w-full max-w-md landscape:max-w-xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
-        <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
-          <h3 className="text-lg font-bold text-slate-800">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 landscape:p-2 animate-fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-md landscape:max-w-xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[95vh]">
+        <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center flex-shrink-0">
+          <h3 className="text-base font-bold text-slate-800">
               {initialData ? '修改提醒' : '添加提醒'}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <i className="fa-solid fa-times text-xl"></i>
+            <i className="fa-solid fa-times text-lg"></i>
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 landscape:p-4 space-y-6 landscape:space-y-0 landscape:grid landscape:grid-cols-2 landscape:gap-6 overflow-y-auto">
-          {/* Left Column in Landscape */}
-          <div className="space-y-4">
-            <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">提醒内容</label>
-                <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="例如：吃降压药"
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                required
-                />
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">日期</label>
-                <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none"
-                required
-                />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="p-4 landscape:p-3 overflow-y-auto">
+          <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4 landscape:gap-3">
+            {/* Left Column */}
+            <div className="space-y-3 landscape:space-y-2">
                 <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">时间</label>
-                <input
-                    type="time"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none"
-                    required
-                />
+                    <label className="block text-xs font-medium text-slate-500 mb-1">内容</label>
+                    <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="例如：吃药"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
+                        required
+                    />
                 </div>
                 <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">提醒谁</label>
-                <select
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none appearance-none"
-                >
-                    {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                </select>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">提醒谁</label>
+                    <select
+                        value={selectedUserId}
+                        onChange={(e) => setSelectedUserId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
+                    >
+                        {users.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                        ))}
+                    </select>
                 </div>
-            </div>
-          </div>
-
-          {/* Right Column in Landscape */}
-          <div className="space-y-4 flex flex-col justify-between">
-            <div>
-                <label className="block text-sm font-medium text-slate-600 mb-2">类型</label>
-                <div className="grid grid-cols-3 landscape:grid-cols-1 gap-3">
-                    <button
-                    type="button"
-                    onClick={() => setType('medication')}
-                    className={`flex flex-col landscape:flex-row items-center justify-center landscape:justify-start gap-2 p-3 rounded-xl border-2 transition-all ${type === 'medication' ? 'border-red-500 bg-red-50 text-red-600' : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'}`}
-                    >
-                    <i className="fa-solid fa-capsules text-xl"></i>
-                    <span className="text-xs font-bold">用药</span>
-                    </button>
-                    <button
-                    type="button"
-                    onClick={() => setType('activity')}
-                    className={`flex flex-col landscape:flex-row items-center justify-center landscape:justify-start gap-2 p-3 rounded-xl border-2 transition-all ${type === 'activity' ? 'border-yellow-500 bg-yellow-50 text-yellow-600' : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'}`}
-                    >
-                    <i className="fa-solid fa-person-running text-xl"></i>
-                    <span className="text-xs font-bold">活动</span>
-                    </button>
-                    <button
-                    type="button"
-                    onClick={() => setType('general')}
-                    className={`flex flex-col landscape:flex-row items-center justify-center landscape:justify-start gap-2 p-3 rounded-xl border-2 transition-all ${type === 'general' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'}`}
-                    >
-                    <i className="fa-regular fa-note-sticky text-xl"></i>
-                    <span className="text-xs font-bold">常规</span>
-                    </button>
+                <div className="grid grid-cols-2 gap-2">
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">日期</label>
+                        <input
+                            type="date"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            className="w-full px-2 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">时间</label>
+                        <input
+                            type="time"
+                            value={time}
+                            onChange={(e) => setTime(e.target.value)}
+                            className="w-full px-2 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
+                            required
+                        />
+                    </div>
                 </div>
             </div>
 
-            {/* Footer Buttons */}
-            <div className="flex gap-4 pt-4 landscape:pt-0">
-                <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 text-slate-600 font-medium bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-                >
-                取消
-                </button>
-                <button
-                type="submit"
-                className="flex-1 py-3 text-white font-bold bg-blue-600 hover:bg-blue-700 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95"
-                >
-                {initialData ? '保存' : '保存'}
-                </button>
+            {/* Right Column */}
+            <div className="space-y-3 landscape:space-y-2 flex flex-col justify-between">
+                <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">重复频率</label>
+                    <select
+                        value={recurrence}
+                        onChange={(e) => setRecurrence(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
+                    >
+                        <option value="once">一次性</option>
+                        <option value="daily">每天</option>
+                        <option value="weekly">每周</option>
+                        <option value="monthly">每月</option>
+                        <option value="yearly">每年</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">类型</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        <button
+                        type="button"
+                        onClick={() => setType('medication')}
+                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${type === 'medication' ? 'border-red-500 bg-red-50 text-red-600' : 'border-slate-100 bg-white text-slate-400'}`}
+                        >
+                        <i className="fa-solid fa-capsules text-sm"></i>
+                        <span className="text-[10px] font-bold">用药</span>
+                        </button>
+                        <button
+                        type="button"
+                        onClick={() => setType('activity')}
+                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${type === 'activity' ? 'border-yellow-500 bg-yellow-50 text-yellow-600' : 'border-slate-100 bg-white text-slate-400'}`}
+                        >
+                        <i className="fa-solid fa-person-running text-sm"></i>
+                        <span className="text-[10px] font-bold">活动</span>
+                        </button>
+                        <button
+                        type="button"
+                        onClick={() => setType('general')}
+                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${type === 'general' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 bg-white text-slate-400'}`}
+                        >
+                        <i className="fa-regular fa-note-sticky text-sm"></i>
+                        <span className="text-[10px] font-bold">常规</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                    <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-2 text-slate-600 font-medium bg-slate-100 hover:bg-slate-200 rounded-lg text-sm"
+                    >
+                    取消
+                    </button>
+                    <button
+                    type="submit"
+                    className="flex-1 py-2 text-white font-bold bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition-all active:scale-95 text-sm"
+                    >
+                    保存
+                    </button>
+                </div>
             </div>
           </div>
         </form>
