@@ -6,6 +6,13 @@ export interface User {
   color: string;
 }
 
+export interface ReminderTypeDefinition {
+  id: string;
+  label: string;
+  icon: string; // FontAwesome class suffix (e.g. 'capsules')
+  color: string; // Tailwind class (e.g. 'bg-red-500')
+}
+
 export interface Reminder {
   id: string;
   userId: string;
@@ -13,7 +20,7 @@ export interface Reminder {
   time: string; // Format: "HH:mm"
   date: string; // Format: "YYYY-MM-DD"
   isCompleted: boolean;
-  type: 'medication' | 'general' | 'activity';
+  type: string; // Dynamic ID now, was union
   recurrence: 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   lastRemindedAt?: number; // Timestamp
   snoozeUntil?: number; // Timestamp
@@ -24,7 +31,7 @@ export interface ParsedReminder {
   time: string;
   date: string; // Format: "YYYY-MM-DD"
   targetUser?: string; // AI implied user
-  type: 'medication' | 'general' | 'activity';
+  type: string;
   recurrence?: 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 }
 

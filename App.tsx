@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, ErrorInfo, Component } from 'react';
-import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString } from './constants';
-import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings } from './types';
+import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
+import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString, DEFAULT_REMINDER_TYPES } from './constants';
+import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings, ReminderTypeDefinition } from './types';
 import VoiceInput from './components/VoiceInput';
 import AlarmOverlay from './components/AlarmOverlay';
 import ManualInputModal from './components/ManualInputModal';
@@ -19,7 +19,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -124,8 +124,14 @@ const AppContent: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   // State for Date Selection
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-      // Correctly initialize with system date in local timezone YYYY-MM-DD
       return getTodayString();
+  });
+
+  const [reminderTypes, setReminderTypes] = useState<ReminderTypeDefinition[]>(() => {
+      try {
+          const saved = localStorage.getItem('family_reminder_types');
+          return saved ? JSON.parse(saved) : DEFAULT_REMINDER_TYPES;
+      } catch { return DEFAULT_REMINDER_TYPES; }
   });
 
   const [reminders, setReminders] = useState<Reminder[]>(() => {
@@ -211,7 +217,7 @@ const AppContent: React.FC = () => {
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
   const systemTodayRef = useRef(selectedDate);
-  const latestDataRef = useRef({ users, reminders, voiceSettings, aiSettings, cloudSettings });
+  const latestDataRef = useRef({ users, reminders, voiceSettings, aiSettings, cloudSettings, reminderTypes });
 
   useEffect(() => {
     if (!users.find(u => u.id === currentUser.id)) {
@@ -220,25 +226,26 @@ const AppContent: React.FC = () => {
   }, [users, currentUser]);
 
   useEffect(() => {
-      latestDataRef.current = { users, reminders, voiceSettings, aiSettings, cloudSettings };
-  }, [users, reminders, voiceSettings, aiSettings, cloudSettings]);
+      latestDataRef.current = { users, reminders, voiceSettings, aiSettings, cloudSettings, reminderTypes };
+  }, [users, reminders, voiceSettings, aiSettings, cloudSettings, reminderTypes]);
 
   useEffect(() => { localStorage.setItem('family_users', JSON.stringify(users)); }, [users]);
   useEffect(() => { localStorage.setItem('family_reminders', JSON.stringify(reminders)); }, [reminders]);
   useEffect(() => { localStorage.setItem('family_voice_settings', JSON.stringify(voiceSettings)); }, [voiceSettings]);
   useEffect(() => { localStorage.setItem('family_ai_settings', JSON.stringify(aiSettings)); }, [aiSettings]);
   useEffect(() => { localStorage.setItem('family_cloud_settings', JSON.stringify(cloudSettings)); }, [cloudSettings]);
+  useEffect(() => { localStorage.setItem('family_reminder_types', JSON.stringify(reminderTypes)); }, [reminderTypes]);
 
   useEffect(() => {
       const backupData = {
-          users, reminders, voiceSettings, aiSettings, backupTime: new Date().toISOString(), type: 'auto'
+          users, reminders, voiceSettings, aiSettings, reminderTypes, backupTime: new Date().toISOString(), type: 'auto'
       };
       localStorage.setItem('family_auto_backup', JSON.stringify(backupData));
-  }, [users, reminders, voiceSettings, aiSettings]);
+  }, [users, reminders, voiceSettings, aiSettings, reminderTypes]);
 
   useEffect(() => {
       const checkAndSync = async () => {
-          const { cloudSettings, users, reminders, voiceSettings, aiSettings } = latestDataRef.current;
+          const { cloudSettings, users, reminders, voiceSettings, aiSettings, reminderTypes } = latestDataRef.current;
           if (!cloudSettings.autoSyncEnabled || !cloudSettings.apiKey || !cloudSettings.binId) return;
           const now = Date.now();
           const lastSync = cloudSettings.lastAutoSync || 0;
@@ -247,7 +254,7 @@ const AppContent: React.FC = () => {
           if (now - lastSync > intervalMs) {
               try {
                   const syncData = {
-                      users, reminders, voiceSettings, aiSettings, version: "1.0", lastUpdated: new Date().toISOString()
+                      users, reminders, voiceSettings, aiSettings, reminderTypes, version: "1.1", lastUpdated: new Date().toISOString()
                   };
                   await updateCloudBackup(cloudSettings.apiKey, cloudSettings.binId, syncData);
                   setCloudSettings(prev => ({ ...prev, lastAutoSync: Date.now() }));
@@ -519,6 +526,7 @@ const AppContent: React.FC = () => {
         users={users}
         currentUser={voiceContextUser}
         initialData={editingReminder || undefined}
+        reminderTypes={reminderTypes}
       />
 
       <SettingsModal
@@ -534,6 +542,8 @@ const AppContent: React.FC = () => {
         setReminders={setReminders}
         cloudSettings={cloudSettings}
         setCloudSettings={setCloudSettings}
+        reminderTypes={reminderTypes}
+        setReminderTypes={setReminderTypes}
       />
 
       {/* SIDEBAR */}
@@ -620,6 +630,7 @@ const AppContent: React.FC = () => {
                         <div className="space-y-3 landscape:space-y-2">
                         {displayedReminders.map((reminder) => {
                             const rUser = users.find(u => u.id === reminder.userId) || users[0];
+                            const rType = reminderTypes.find(t => t.id === reminder.type) || DEFAULT_REMINDER_TYPES[2];
                             // COMPACT UI for small screens
                             return (
                                 <div key={reminder.id} className={`group relative overflow-hidden rounded-xl p-3 md:p-5 landscape:p-2 transition-all duration-300 ${reminder.isCompleted ? 'bg-slate-100/60 border border-transparent opacity-60' : 'bg-white shadow-md shadow-slate-200/20 border border-white hover:shadow-lg'}`}>
@@ -649,8 +660,9 @@ const AppContent: React.FC = () => {
                                             </div>
                                             
                                             <div className="flex items-center gap-2 mt-1">
-                                                {reminder.type === 'medication' && <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded"><i className="fa-solid fa-capsules mr-1"></i>用药</span>}
-                                                {reminder.type === 'activity' && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-50 px-1.5 py-0.5 rounded"><i className="fa-solid fa-person-running mr-1"></i>活动</span>}
+                                                <span className={`text-[10px] font-bold ${rType.color.replace('bg-', 'text-')} bg-opacity-10 px-1.5 py-0.5 rounded bg-gray-100`}>
+                                                    <i className={`fa-solid fa-${rType.icon} mr-1`}></i>{rType.label}
+                                                </span>
                                                 {reminder.recurrence && reminder.recurrence !== 'once' && (
                                                      <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
                                                         <i className="fa-solid fa-rotate-right mr-1"></i>

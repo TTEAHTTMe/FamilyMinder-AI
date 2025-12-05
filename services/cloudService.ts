@@ -1,9 +1,11 @@
 
+
 interface BackupData {
     users: any[];
     reminders: any[];
     voiceSettings: any;
     aiSettings: any;
+    reminderTypes?: any[];
     version: string;
     lastUpdated: string;
 }

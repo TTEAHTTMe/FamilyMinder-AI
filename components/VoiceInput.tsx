@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { parseReminderWithGemini } from '../services/geminiService';
 import { User, VoiceSettings, AISettings } from '../types';
@@ -229,20 +228,20 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
   return (
     <>
         {!isOpen && (
-             <div className="fixed bottom-6 landscape:bottom-1 left-0 right-0 flex justify-center z-[100] px-4 pointer-events-none">
+             <div className="fixed bottom-2 left-0 right-0 flex justify-center z-[200] px-4 pointer-events-none">
                 <div className="flex items-center gap-4 pointer-events-auto bg-white/10 backdrop-blur-sm p-1 rounded-3xl">
                     <button onClick={onManualInput} className="w-12 h-12 rounded-full bg-white text-slate-500 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-lg border border-slate-200">
                         <i className="fa-solid fa-list-check text-xl"></i>
                     </button>
                     <button onClick={toggleAssistant} className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-300 flex items-center justify-center transition-transform active:scale-95">
-                        <i className="fa-solid fa-microphone text-xl"></i>
+                        <i className="fa-solid fa-robot text-xl"></i>
                     </button>
                 </div>
              </div>
         )}
 
         {isOpen && (
-            <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
                 {/* Modal Container: Full height on mobile landscape, centered on desktop */}
                 <div className="bg-slate-100 w-full md:w-[500px] h-[90vh] landscape:h-full md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative">
                     <div className="bg-white px-4 py-2 shadow-sm flex items-center justify-between flex-shrink-0 z-10 border-b border-slate-100">

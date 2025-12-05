@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { User, VoiceSettings, AISettings, AIProvider, Reminder, CloudSettings } from '../types';
+import { User, VoiceSettings, AISettings, AIProvider, Reminder, CloudSettings, ReminderTypeDefinition } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { createCloudBackup, updateCloudBackup, fetchCloudBackup } from '../services/cloudService';
 
@@ -16,6 +17,8 @@ interface SettingsModalProps {
   setReminders: (reminders: Reminder[]) => void;
   cloudSettings: CloudSettings;
   setCloudSettings: (settings: CloudSettings) => void;
+  reminderTypes: ReminderTypeDefinition[];
+  setReminderTypes: (types: ReminderTypeDefinition[]) => void;
 }
 
 const AVATAR_OPTIONS = ['👴', '👵', '👨', '👩', '👶', '👦', '👧', '👱', '👱‍♀️', '😺', '🐶', '🤖', '👾'];
@@ -23,6 +26,7 @@ const COLOR_OPTIONS = [
   'bg-blue-500', 'bg-emerald-500', 'bg-indigo-500', 'bg-rose-500', 
   'bg-yellow-500', 'bg-purple-500', 'bg-cyan-500', 'bg-orange-500', 'bg-slate-500'
 ];
+const ICON_OPTIONS = ['capsules', 'person-running', 'note-sticky', 'utensils', 'cart-shopping', 'heart', 'briefcase', 'book', 'car', 'plane'];
 
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, 
@@ -36,9 +40,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   reminders,
   setReminders,
   cloudSettings,
-  setCloudSettings
+  setCloudSettings,
+  reminderTypes,
+  setReminderTypes
 }) => {
-  const [activeTab, setActiveTab] = useState<'family' | 'voice' | 'ai' | 'data' | 'cloud'>('family');
+  const [activeTab, setActiveTab] = useState<'family' | 'types' | 'voice' | 'ai' | 'data' | 'cloud'>('family');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [autoBackupTime, setAutoBackupTime] = useState<string | null>(null);
@@ -79,6 +85,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleAddUser = () => {
     setUsers([...users, { id: uuidv4(), name: '新成员', avatar: '😊', color: 'bg-slate-500' }]);
+  };
+
+  const handleUpdateType = (id: string, field: keyof ReminderTypeDefinition, value: string) => {
+    setReminderTypes(reminderTypes.map(t => t.id === id ? { ...t, [field]: value } : t));
+  };
+  
+  const handleAddType = () => {
+      setReminderTypes([...reminderTypes, { id: uuidv4(), label: '新类型', icon: 'note-sticky', color: 'bg-blue-500' }]);
+  };
+
+  const handleDeleteType = (id: string) => {
+      if (reminderTypes.length <= 1) { alert("至少保留一个类型"); return; }
+      if (confirm("删除类型不会删除已有的提醒，确定吗？")) {
+          setReminderTypes(reminderTypes.filter(t => t.id !== id));
+      }
   };
 
   const handleRequestDelete = (e: React.MouseEvent, id: string) => {
@@ -123,7 +144,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleExportData = () => {
-    const data = { users, reminders, voiceSettings, aiSettings, exportDate: new Date().toISOString(), version: "1.0" };
+    const data = { users, reminders, voiceSettings, aiSettings, reminderTypes, exportDate: new Date().toISOString(), version: "1.1" };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -143,6 +164,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             if (json.reminders) setReminders(json.reminders);
             if (json.voiceSettings) setVoiceSettings(json.voiceSettings);
             if (json.aiSettings) setAiSettings(json.aiSettings);
+            if (json.reminderTypes) setReminderTypes(json.reminderTypes);
             alert("恢复成功");
         } catch (err) { alert("格式错误"); }
     };
@@ -163,6 +185,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             if (parsed.reminders) setReminders(parsed.reminders);
             if (parsed.voiceSettings) setVoiceSettings(parsed.voiceSettings);
             if (parsed.aiSettings) setAiSettings(parsed.aiSettings);
+            if (parsed.reminderTypes) setReminderTypes(parsed.reminderTypes);
             alert("恢复成功");
         } else {
             alert("无自动备份");
@@ -174,7 +197,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       if (!cloudSettings.apiKey) { alert("无 Key"); return; }
       setIsCloudSyncing(true);
       try {
-          const data = { users, reminders, voiceSettings, aiSettings, version: "1.0", lastUpdated: new Date().toISOString() };
+          const data = { users, reminders, voiceSettings, aiSettings, reminderTypes, version: "1.1", lastUpdated: new Date().toISOString() };
           if (cloudSettings.binId) {
               await updateCloudBackup(cloudSettings.apiKey, cloudSettings.binId, data);
               alert("更新成功");
@@ -196,6 +219,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           if (data.reminders) setReminders(data.reminders);
           if (data.voiceSettings) setVoiceSettings(data.voiceSettings);
           if (data.aiSettings) setAiSettings(data.aiSettings);
+          if (data.reminderTypes) setReminderTypes(data.reminderTypes);
           alert("恢复成功");
       } catch (e: any) { alert(`失败: ${e.message}`); } finally { setIsCloudSyncing(false); }
   };
@@ -214,9 +238,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="flex border-b border-slate-100 flex-shrink-0 overflow-x-auto scrollbar-hide">
-          {['family', 'voice', 'ai', 'data', 'cloud'].map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab as any)} className={`flex-1 min-w-[70px] py-3 landscape:py-2 text-sm font-bold whitespace-nowrap ${activeTab === tab ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500'}`}>
-                {{'family':'成员', 'voice':'语音', 'ai':'AI', 'data':'数据', 'cloud':'云'}[tab]}
+          {['family', 'types', 'voice', 'ai', 'data', 'cloud'].map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab as any)} className={`flex-1 min-w-[60px] py-3 landscape:py-2 text-sm font-bold whitespace-nowrap ${activeTab === tab ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500'}`}>
+                {{'family':'成员', 'types': '类型', 'voice':'语音', 'ai':'AI', 'data':'数据', 'cloud':'云'}[tab]}
               </button>
           ))}
         </div>
@@ -252,6 +276,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               ))}
               <button onClick={handleAddUser} className="w-full py-3 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl font-bold flex items-center justify-center gap-2 text-sm"><i className="fa-solid fa-plus"></i> 添加</button>
             </div>
+          )}
+
+          {activeTab === 'types' && (
+              <div className="space-y-4 landscape:grid landscape:grid-cols-2 landscape:gap-4 landscape:space-y-0">
+                  {reminderTypes.map(t => (
+                      <div key={t.id} className="bg-slate-50 p-2 rounded-xl border border-slate-100 flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0 relative ${t.color}`}>
+                                 <i className={`fa-solid fa-${t.icon} text-xs`}></i>
+                                 <select className="absolute inset-0 opacity-0 cursor-pointer" value={t.icon} onChange={(e) => handleUpdateType(t.id, 'icon', e.target.value)}>
+                                     {ICON_OPTIONS.map(i => <option key={i} value={i}>{i}</option>)}
+                                 </select>
+                             </div>
+                             <input type="text" value={t.label} onChange={(e) => handleUpdateType(t.id, 'label', e.target.value)} className="flex-1 bg-white border border-slate-200 rounded px-2 py-1 text-sm font-bold" />
+                             <button onClick={() => handleDeleteType(t.id)} className="text-slate-400 hover:text-red-500 px-2"><i className="fa-solid fa-trash-can"></i></button>
+                          </div>
+                          <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+                              {COLOR_OPTIONS.map(c => <button key={c} onClick={() => handleUpdateType(t.id, 'color', c)} className={`w-4 h-4 rounded-full flex-shrink-0 ${c} ${t.color === c ? 'ring-2 ring-slate-400' : ''}`} />)}
+                          </div>
+                      </div>
+                  ))}
+                  <button onClick={handleAddType} className="w-full py-3 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl font-bold flex items-center justify-center gap-2 text-sm"><i className="fa-solid fa-plus"></i> 添加类型</button>
+              </div>
           )}
 
           {activeTab === 'voice' && (

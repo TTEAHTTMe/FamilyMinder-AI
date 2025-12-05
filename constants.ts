@@ -1,4 +1,5 @@
-import { User } from './types';
+
+import { User, ReminderTypeDefinition } from './types';
 
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: '爷爷', avatar: '👴', color: 'bg-blue-500' },
@@ -6,6 +7,12 @@ export const MOCK_USERS: User[] = [
   { id: 'u3', name: '爸爸', avatar: '👨', color: 'bg-indigo-500' },
   { id: 'u4', name: '妈妈', avatar: '👩', color: 'bg-rose-500' },
   { id: 'u5', name: '宝贝', avatar: '👶', color: 'bg-yellow-500' },
+];
+
+export const DEFAULT_REMINDER_TYPES: ReminderTypeDefinition[] = [
+    { id: 'medication', label: '用药', icon: 'capsules', color: 'bg-red-500' },
+    { id: 'activity', label: '活动', icon: 'person-running', color: 'bg-yellow-500' },
+    { id: 'general', label: '常规', icon: 'note-sticky', color: 'bg-blue-500' },
 ];
 
 export const getTodayString = () => {

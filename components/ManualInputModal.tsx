@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Reminder } from '../types';
+import { User, Reminder, ReminderTypeDefinition } from '../types';
 import { getTodayString } from '../constants';
 
 interface ManualInputModalProps {
@@ -10,6 +10,7 @@ interface ManualInputModalProps {
   users: User[];
   currentUser: User;
   initialData?: Reminder;
+  reminderTypes: ReminderTypeDefinition[];
 }
 
 const ManualInputModal: React.FC<ManualInputModalProps> = ({ 
@@ -18,13 +19,14 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
   onSave, 
   users, 
   currentUser,
-  initialData 
+  initialData,
+  reminderTypes
 }) => {
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('');
   const [date, setDate] = useState('');
   const [selectedUserId, setSelectedUserId] = useState(currentUser.id);
-  const [type, setType] = useState<Reminder['type']>('general');
+  const [type, setType] = useState<string>('general');
   const [recurrence, setRecurrence] = useState<Reminder['recurrence']>('once');
 
   useEffect(() => {
@@ -49,17 +51,43 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         } else {
             setSelectedUserId(currentUser.id);
         }
-        setType('general');
+        setType(reminderTypes[0]?.id || 'general');
         setRecurrence('once');
       }
     }
-  }, [isOpen, initialData, currentUser, users]);
+  }, [isOpen, initialData, currentUser, users, reminderTypes]);
+
+  // Smart time formatting logic (User types 0830 -> 08:30)
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      let val = e.target.value.replace(/[^0-9]/g, ''); // Remove non-digits
+      if (val.length > 4) val = val.substring(0, 4);
+
+      if (val.length > 2) {
+          val = val.substring(0, 2) + ':' + val.substring(2);
+      }
+      setTime(val);
+  };
+
+  const handleTimeBlur = () => {
+      // Basic validation on blur to ensure valid time format
+      if (time.length === 5 && !time.includes(':')) return;
+      if (time.length < 5 && time.length > 0) {
+           // Pad simple cases like "8:30" to "08:30"
+           if (time.indexOf(':') === 1) setTime('0' + time);
+           else if (time.length === 4 && !time.includes(':')) setTime(time.substring(0,2) + ':' + time.substring(2));
+      }
+  };
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !time || !date) return;
+    // Simple time validation
+    if (!time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+        alert("时间格式错误，请输入 HH:MM (例如 08:30)");
+        return;
+    }
 
     onSave({
       title,
@@ -72,12 +100,6 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
     });
     onClose();
   };
-
-  const TYPES: { id: Reminder['type']; label: string; icon: string; activeClass: string }[] = [
-      { id: 'medication', label: '用药', icon: 'fa-capsules', activeClass: 'bg-red-500 text-white border-red-500' },
-      { id: 'activity', label: '活动', icon: 'fa-person-running', activeClass: 'bg-yellow-500 text-white border-yellow-500' },
-      { id: 'general', label: '常规', icon: 'fa-note-sticky', activeClass: 'bg-blue-500 text-white border-blue-500' },
-  ];
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 landscape:p-2 animate-fade-in">
@@ -130,11 +152,14 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">时间</label>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">时间 (HH:MM)</label>
                         <input
-                            type="time"
+                            type="text"
+                            inputMode="numeric"
                             value={time}
-                            onChange={(e) => setTime(e.target.value)}
+                            onChange={handleTimeChange}
+                            onBlur={handleTimeBlur}
+                            placeholder="08:00"
                             className="w-full px-2 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
                             required
                         />
@@ -159,21 +184,21 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
                     </select>
                 </div>
 
-                <div>
+                <div className="flex-1">
                     <label className="block text-xs font-medium text-slate-500 mb-1">类型</label>
-                    <div className="flex gap-2">
-                        {TYPES.map((t) => (
+                    <div className="flex flex-wrap gap-2">
+                        {reminderTypes.map((t) => (
                             <button
                                 key={t.id}
                                 type="button"
                                 onClick={() => setType(t.id)}
-                                className={`flex-1 py-2 px-1 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                className={`py-1.5 px-3 rounded-full border text-xs font-bold flex items-center gap-1 transition-all ${
                                     type === t.id 
-                                    ? t.activeClass 
+                                    ? t.color + ' text-white border-transparent'
                                     : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                                 }`}
                             >
-                                <i className={`fa-solid ${t.icon}`}></i>
+                                <i className={`fa-solid fa-${t.icon}`}></i>
                                 <span>{t.label}</span>
                             </button>
                         ))}
