@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, AIConfig } from "../types";
 
@@ -104,7 +105,8 @@ export const parseReminderWithGemini = async (
     providerType?: string
 ): Promise<AIResponse | null> => {
 
-  if (!aiConfig || (!aiConfig.apiKey && providerType !== 'custom')) {
+  // GUIDELINE: Relax check for Gemini as it uses process.env.API_KEY
+  if (!aiConfig || (!aiConfig.apiKey && providerType !== 'custom' && providerType !== 'gemini')) {
     throw new Error("请先在设置中配置 API Key");
   }
 
@@ -184,7 +186,8 @@ export const parseReminderWithGemini = async (
 
   // --- GOOGLE GEMINI ---
   try {
-    const ai = new GoogleGenAI({ apiKey: aiConfig.apiKey });
+    // GUIDELINE: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: aiConfig.model || "gemini-2.5-flash",
       contents: `${systemPrompt}

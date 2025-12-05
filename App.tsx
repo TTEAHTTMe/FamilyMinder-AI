@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
+import React, { useState, useEffect, useRef, ErrorInfo, Component } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings } from './types';
 import VoiceInput from './components/VoiceInput';
@@ -19,7 +19,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
     error: null

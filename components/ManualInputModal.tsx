@@ -73,6 +73,12 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
     onClose();
   };
 
+  const TYPES: { id: Reminder['type']; label: string; icon: string; activeClass: string }[] = [
+      { id: 'medication', label: '用药', icon: 'fa-capsules', activeClass: 'bg-red-500 text-white border-red-500' },
+      { id: 'activity', label: '活动', icon: 'fa-person-running', activeClass: 'bg-yellow-500 text-white border-yellow-500' },
+      { id: 'general', label: '常规', icon: 'fa-note-sticky', activeClass: 'bg-blue-500 text-white border-blue-500' },
+  ];
+
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 landscape:p-2 animate-fade-in">
       <div className="bg-white rounded-2xl w-full max-w-md landscape:max-w-xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[95vh]">
@@ -155,31 +161,22 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
 
                 <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">类型</label>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button
-                        type="button"
-                        onClick={() => setType('medication')}
-                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${type === 'medication' ? 'border-red-500 bg-red-50 text-red-600' : 'border-slate-100 bg-white text-slate-400'}`}
-                        >
-                        <i className="fa-solid fa-capsules text-sm"></i>
-                        <span className="text-[10px] font-bold">用药</span>
-                        </button>
-                        <button
-                        type="button"
-                        onClick={() => setType('activity')}
-                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${type === 'activity' ? 'border-yellow-500 bg-yellow-50 text-yellow-600' : 'border-slate-100 bg-white text-slate-400'}`}
-                        >
-                        <i className="fa-solid fa-person-running text-sm"></i>
-                        <span className="text-[10px] font-bold">活动</span>
-                        </button>
-                        <button
-                        type="button"
-                        onClick={() => setType('general')}
-                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg border transition-all ${type === 'general' ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 bg-white text-slate-400'}`}
-                        >
-                        <i className="fa-regular fa-note-sticky text-sm"></i>
-                        <span className="text-[10px] font-bold">常规</span>
-                        </button>
+                    <div className="flex gap-2">
+                        {TYPES.map((t) => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setType(t.id)}
+                                className={`flex-1 py-2 px-1 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                    type === t.id 
+                                    ? t.activeClass 
+                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                }`}
+                            >
+                                <i className={`fa-solid ${t.icon}`}></i>
+                                <span>{t.label}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
 

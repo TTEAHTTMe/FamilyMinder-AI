@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { parseReminderWithGemini } from '../services/geminiService';
 import { User, VoiceSettings, AISettings } from '../types';
@@ -137,16 +138,18 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
 
   const speakText = (text: string) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance();
-        msg.text = text;
-        msg.lang = 'zh-CN';
-        const { voiceSettings: curVoice } = latestPropsRef.current;
-        if (curVoice.voiceURI) {
-            const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === curVoice.voiceURI);
-            if (voice) msg.voice = voice;
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance();
+            msg.text = text;
+            msg.lang = 'zh-CN';
+            const { voiceSettings: curVoice } = latestPropsRef.current;
+            if (curVoice.voiceURI) {
+                const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === curVoice.voiceURI);
+                if (voice) msg.voice = voice;
+            }
+            window.speechSynthesis.speak(msg);
         }
-        window.speechSynthesis.speak(msg);
     }
   };
 
@@ -157,8 +160,10 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
       
       try {
           const { currentUser: curUser, users: allUsers, aiSettings: curSettings } = latestPropsRef.current;
-          const activeConfig = curSettings.configs?.[curSettings.activeProvider];
-          if (!activeConfig?.apiKey && curSettings.activeProvider !== 'custom') {
+          const activeConfig = curSettings.configs?.[curSettings.activeProvider] || curSettings.configs?.gemini;
+          
+          // GUIDELINE: Skip validation for Gemini as it uses process.env.API_KEY
+          if (!activeConfig?.apiKey && curSettings.activeProvider !== 'custom' && curSettings.activeProvider !== 'gemini') {
               throw new Error(`请先配置 API Key`);
           }
 
@@ -166,7 +171,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
           const todayStr = getTodayString();
           const result = await parseReminderWithGemini(
               text, curUser.name, familyNames, todayStr,
-              activeConfig || curSettings.configs.gemini, curSettings.activeProvider
+              activeConfig, curSettings.activeProvider
           );
 
           if (result) {
@@ -225,14 +230,12 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
     <>
         {!isOpen && (
              <div className="fixed bottom-6 landscape:bottom-1 left-0 right-0 flex justify-center z-[100] px-4 pointer-events-none">
-                <div className="w-full max-w-sm flex items-end gap-2 pointer-events-auto">
-                    <button onClick={onManualInput} className="w-12 h-12 landscape:w-10 landscape:h-10 rounded-2xl bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors shadow-lg border border-slate-100 flex-shrink-0">
-                        <i className="fa-solid fa-list-check text-lg landscape:text-base"></i>
+                <div className="flex items-center gap-4 pointer-events-auto bg-white/10 backdrop-blur-sm p-1 rounded-3xl">
+                    <button onClick={onManualInput} className="w-12 h-12 rounded-full bg-white text-slate-500 flex items-center justify-center hover:bg-slate-100 transition-colors shadow-lg border border-slate-200">
+                        <i className="fa-solid fa-list-check text-xl"></i>
                     </button>
-                    <button onClick={toggleAssistant} className="h-16 landscape:h-10 flex-1 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-200 flex items-center justify-center gap-3 transition-transform active:scale-95">
-                        <i className="fa-solid fa-microphone text-2xl landscape:text-base"></i>
-                        <span className="font-bold text-lg landscape:hidden">AI 语音 / 对话</span>
-                        <span className="font-bold text-sm hidden landscape:inline">AI 助手</span>
+                    <button onClick={toggleAssistant} className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-300 flex items-center justify-center transition-transform active:scale-95">
+                        <i className="fa-solid fa-microphone text-xl"></i>
                     </button>
                 </div>
              </div>
