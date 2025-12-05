@@ -49,6 +49,7 @@ export interface VoiceSettings {
   rate: number;
   volume: number;
   model?: string; // For OpenAI, e.g. 'tts-1'
+  ttsBaseUrl?: string; // New: Allow custom TTS endpoint (OpenAI compatible)
 }
 
 export type AIProvider = 'gemini' | 'deepseek' | 'moonshot' | 'siliconflow' | 'custom' | 'openai';

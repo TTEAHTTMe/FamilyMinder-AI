@@ -42,7 +42,6 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
           audioRef.current.play().then(() => setIsAudioLocked(false)).catch(e => alert("无法播放声音"));
       }
       if (typeof window !== 'undefined' && window.speechSynthesis) {
-          // Dummy speak to unlock iOS
           const msg = new SpeechSynthesisUtterance('');
           window.speechSynthesis.speak(msg);
       }
@@ -54,15 +53,28 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   }, [onSnooze]);
 
   const speakTextOpenAI = async (text: string) => {
-      const ttsConfig = aiSettings.configs['openai'] || aiSettings.configs[aiSettings.activeProvider];
-      const apiKey = ttsConfig?.apiKey;
-      
+      // 1. Try to get key from the 'openai' specific config first
+      let apiKey = aiSettings.configs['openai']?.apiKey;
+      let rawBaseUrl = aiSettings.configs['openai']?.baseUrl;
+
+      // 2. Fallback to Voice Settings custom URL if provided (for flexibility)
+      if (voiceSettings.ttsBaseUrl) {
+          rawBaseUrl = voiceSettings.ttsBaseUrl;
+      }
+
+      // 3. Fallback to active provider if it's generic compatible
+      if (!apiKey) {
+           apiKey = aiSettings.configs[aiSettings.activeProvider]?.apiKey;
+      }
+
       if (!apiKey) {
           console.warn("OpenAI TTS selected but no API Key found.");
           return false;
       }
 
-      const rawBaseUrl = ttsConfig.baseUrl || 'https://api.openai.com/v1';
+      // 4. Default Base URL
+      if (!rawBaseUrl) rawBaseUrl = 'https://api.openai.com/v1';
+
       const cleanBaseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
       const url = `${cleanBaseUrl}/audio/speech`;
 
@@ -125,7 +137,6 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
           msg.onend = () => { if (audioRef.current) audioRef.current.volume = 1.0; };
           msg.onerror = () => { if (audioRef.current) audioRef.current.volume = 1.0; };
           
-          // GC FIX
           (window as any).currentUtterance = msg;
           window.speechSynthesis.speak(msg);
       }

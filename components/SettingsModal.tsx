@@ -29,6 +29,14 @@ const COLOR_OPTIONS = [
 ];
 const ICON_OPTIONS = ['capsules', 'person-running', 'note-sticky', 'utensils', 'cart-shopping', 'heart', 'briefcase', 'book', 'car', 'plane'];
 
+const PROVIDER_LINKS: Record<string, string> = {
+    gemini: 'https://aistudiocdn.com/apikey', // Official Google AI Studio
+    deepseek: 'https://platform.deepseek.com/api_keys',
+    moonshot: 'https://platform.moonshot.cn/console/api-keys',
+    siliconflow: 'https://cloud.siliconflow.cn/account/ak',
+    openai: 'https://platform.openai.com/api-keys'
+};
+
 const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, 
   onClose, 
@@ -234,6 +242,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   };
   
   const currentConfig = aiSettings?.configs?.[aiSettings?.activeProvider] || aiSettings?.configs?.gemini || { apiKey: '', baseUrl: '', model: '' };
+  
+  // Safe default fallback
+  if (!currentConfig.apiKey) currentConfig.apiKey = '';
+  if (!currentConfig.baseUrl) currentConfig.baseUrl = '';
+  if (!currentConfig.model) currentConfig.model = '';
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 landscape:p-0 animate-fade-in">
@@ -314,7 +327,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-4 landscape:space-y-2">
               <div className="flex gap-2">
                  <button onClick={() => setVoiceSettings({ ...voiceSettings, provider: 'web' })} className={`flex-1 py-2 rounded text-xs font-bold ${voiceSettings.provider !== 'openai' ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>浏览器原生</button>
-                 <button onClick={() => setVoiceSettings({ ...voiceSettings, provider: 'openai' })} className={`flex-1 py-2 rounded text-xs font-bold ${voiceSettings.provider === 'openai' ? 'bg-green-600 text-white' : 'bg-slate-100'}`}>OpenAI TTS</button>
+                 <button onClick={() => setVoiceSettings({ ...voiceSettings, provider: 'openai' })} className={`flex-1 py-2 rounded text-xs font-bold ${voiceSettings.provider === 'openai' ? 'bg-green-600 text-white' : 'bg-slate-100'}`}>OpenAI / 兼容</button>
               </div>
               {voiceSettings.provider !== 'openai' ? (
                 <>
@@ -330,19 +343,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </>
               ) : (
                 <>
-                   <div className="text-xs text-slate-500 mb-2">使用 AI 设置中的 OpenAI API Key</div>
-                   <div>
-                       <label className="text-xs font-bold text-slate-500">模型</label>
-                       <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.model || 'tts-1'} onChange={(e) => setVoiceSettings({...voiceSettings, model: e.target.value})}>
-                           <option value="tts-1">TTS-1 (标准)</option>
-                           <option value="tts-1-hd">TTS-1-HD (高清)</option>
-                       </select>
+                   <div className="text-xs text-slate-500 mb-2 p-2 bg-blue-50 rounded">
+                       使用 <b>AI 设置 - OpenAI</b> 中的 Key。
+                       <br/>支持任何兼容 OpenAI TTS 协议的服务。
                    </div>
                    <div>
-                       <label className="text-xs font-bold text-slate-500">音色</label>
-                       <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI || 'alloy'} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}>
-                           {['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].map(v => <option key={v} value={v}>{v}</option>)}
-                       </select>
+                       <label className="text-xs font-bold text-slate-500">Base URL (选填)</label>
+                       <input 
+                           type="text" 
+                           placeholder="默认: https://api.openai.com/v1" 
+                           value={voiceSettings.ttsBaseUrl || ''} 
+                           onChange={(e) => setVoiceSettings({...voiceSettings, ttsBaseUrl: e.target.value})} 
+                           className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm"
+                       />
+                       <p className="text-[10px] text-slate-400">如果使用中转服务或本地 TTS，请在此填入地址。</p>
+                   </div>
+                   <div>
+                       <label className="text-xs font-bold text-slate-500">模型</label>
+                       <input type="text" className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.model || 'tts-1'} onChange={(e) => setVoiceSettings({...voiceSettings, model: e.target.value})} placeholder="例如: tts-1" />
+                   </div>
+                   <div>
+                       <label className="text-xs font-bold text-slate-500">音色 ID</label>
+                       <input type="text" className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI || 'alloy'} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})} placeholder="例如: alloy" />
                    </div>
                 </>
               )}
@@ -359,8 +381,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                  </div>
                  
                  <div className="col-span-2">
-                    <label className="text-xs font-bold text-slate-500">API Key</label>
-                    <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                    {aiSettings.activeProvider !== 'gemini' && (
+                        <>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="text-xs font-bold text-slate-500">API Key</label>
+                                {PROVIDER_LINKS[aiSettings.activeProvider] && (
+                                    <a href={PROVIDER_LINKS[aiSettings.activeProvider]} target="_blank" rel="noreferrer" className="text-[10px] text-blue-500 underline">
+                                        获取 Key <i className="fa-solid fa-external-link-alt"></i>
+                                    </a>
+                                )}
+                            </div>
+                            <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                        </>
+                    )}
+                    {aiSettings.activeProvider === 'gemini' && (
+                         <div className="text-xs text-slate-500 bg-blue-50 p-3 rounded border border-blue-100">
+                             Gemini API Key 已通过环境变量配置 (process.env.API_KEY)。
+                         </div>
+                    )}
                 </div>
 
                  {aiSettings.activeProvider !== 'gemini' && aiSettings.activeProvider !== 'openai' && (
@@ -370,7 +408,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     </>
                  )}
                  {aiSettings.activeProvider === 'openai' && (
-                    <div className="text-xs text-slate-500 col-span-2">配置此 Key 用于 Chat (GPT) 或 TTS (语音合成)。</div>
+                    <div className="text-xs text-slate-500 col-span-2">此 Key 可同时用于 AI 对话 和 TTS 语音合成。</div>
                  )}
              </div>
           )}

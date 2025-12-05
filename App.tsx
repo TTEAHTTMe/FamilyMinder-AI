@@ -20,11 +20,14 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = {
-    hasError: false,
-    error: null
-  };
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -121,9 +124,7 @@ const AppContent: React.FC = () => {
     } catch { return MOCK_USERS[0]; }
   });
 
-  // New State for View Mode
   const [viewMode, setViewMode] = useState<ViewMode>('home');
-  // State for Date Selection
   const [selectedDate, setSelectedDate] = useState<string>(() => {
       return getTodayString();
   });
@@ -139,13 +140,12 @@ const AppContent: React.FC = () => {
     try {
         const saved = localStorage.getItem('family_reminders');
         let loaded = saved ? JSON.parse(saved) : INITIAL_REMINDERS;
-        // Migration logic
         const today = getTodayString();
         if (Array.isArray(loaded)) {
             loaded = loaded.map((r: any) => ({
                 ...r,
                 date: r.date || today,
-                recurrence: r.recurrence || 'once' // Migrate recurrence
+                recurrence: r.recurrence || 'once'
             }));
             return loaded;
         }
@@ -236,9 +236,7 @@ const AppContent: React.FC = () => {
       const interval = setInterval(() => {
           const currentSystemDate = getTodayString();
           if (currentSystemDate !== systemTodayRef.current) {
-               // Date rollover!
                systemTodayRef.current = currentSystemDate;
-               // If user is looking at "today" (which is now yesterday), bump them to the new today
                setSelectedDate(prev => {
                    if (prev < currentSystemDate) return currentSystemDate;
                    return prev;
@@ -248,7 +246,6 @@ const AppContent: React.FC = () => {
       return () => clearInterval(interval);
   }, []);
 
-  // Auto Cloud Sync Heartbeat (every minute)
   useEffect(() => {
       const interval = setInterval(() => {
           const { cloudSettings: cs, users: u, reminders: r, voiceSettings: vs, aiSettings: ai, reminderTypes: rt } = latestDataRef.current;
@@ -258,10 +255,8 @@ const AppContent: React.FC = () => {
               const intervalMs = cs.autoSyncInterval * 60 * 1000;
               
               if (now - lastSync > intervalMs) {
-                  console.log("Triggering Auto Cloud Sync...");
                   const data = { users: u, reminders: r, voiceSettings: vs, aiSettings: ai, reminderTypes: rt, version: "1.1", lastUpdated: new Date().toISOString() };
                   updateCloudBackup(cs.apiKey, cs.binId, data).then(() => {
-                      console.log("Auto Sync Success");
                       setCloudSettings({ ...cs, lastAutoSync: now });
                   }).catch(err => console.error("Auto Sync Failed", err));
               }
@@ -270,10 +265,8 @@ const AppContent: React.FC = () => {
       return () => clearInterval(interval);
   }, []);
 
-  // Persistence
   useEffect(() => {
     localStorage.setItem('family_users', JSON.stringify(users));
-    // Auto local backup side-effect
     localStorage.setItem('family_auto_backup', JSON.stringify({
         users, reminders, voiceSettings, aiSettings, reminderTypes, backupTime: new Date().toISOString()
     }));
@@ -290,7 +283,7 @@ const AppContent: React.FC = () => {
     if (viewMode !== 'home') {
       inactivityTimerRef.current = setTimeout(() => {
         setViewMode('home');
-      }, 180000); // 3 minutes
+      }, 180000); 
     }
   };
 
@@ -377,7 +370,6 @@ const AppContent: React.FC = () => {
     const reminder = reminders.find(r => r.id === id);
     if (!reminder) return;
     
-    // Allow unchecking
     if (reminder.isCompleted) {
          setReminders(reminders.map(r => r.id === id ? { ...r, isCompleted: false } : r));
          return;
@@ -395,7 +387,6 @@ const AppContent: React.FC = () => {
 
     let newReminders = reminders.map(r => r.id === id ? { ...r, isCompleted: true } : r);
     
-    // Only generate next if checking (completing)
     if (reminder.recurrence && reminder.recurrence !== 'once') {
         const nextInstance = handleNextOccurrence(reminder);
         if (nextInstance) newReminders.push(nextInstance);
@@ -472,9 +463,6 @@ const AppContent: React.FC = () => {
       const day = String(d.getDate()).padStart(2, '0');
       setSelectedDate(`${y}-${m}-${day}`);
   };
-
-  const userThemeColor = viewMode === 'home' ? 'bg-slate-500' : currentUser.color;
-  const themeName = getColorName(userThemeColor);
 
   return (
     <div className="min-h-screen h-[100dvh] bg-slate-50 flex flex-col md:flex-row overflow-hidden">
@@ -575,15 +563,13 @@ const AppContent: React.FC = () => {
           </div>
       </nav>
 
-      {/* MAIN CONTENT AREA */}
       <main className={`
          flex-1 relative z-20 overflow-hidden flex flex-col transition-colors duration-500
          ${viewMode === 'home' ? 'bg-slate-50' : currentUser.color.replace('500', '50')}
          rounded-none md:-ml-px landscape:-ml-px mt-[-1px] md:mt-0 landscape:mt-0
       `}>
           
-          {/* Header */}
-          <header className="px-6 py-6 landscape:py-2 flex justify-between items-end flex-shrink-0">
+          <header className="px-6 py-6 landscape:py-1 landscape:h-8 landscape:min-h-0 flex justify-between items-end flex-shrink-0">
               <div>
                   <h1 className="text-3xl landscape:hidden font-bold text-slate-800 tracking-tight flex items-center gap-2">
                       {viewMode === 'home' ? (
@@ -599,22 +585,22 @@ const AppContent: React.FC = () => {
                       </p>
                       
                       <div className="flex bg-white rounded-lg shadow-sm border border-slate-100 p-0.5">
-                          <button onClick={() => changeDate(-1)} className="w-8 h-8 landscape:w-7 landscape:h-7 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-left landscape:text-xs"></i></button>
+                          <button onClick={() => changeDate(-1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-left landscape:text-[10px]"></i></button>
                           <button onClick={() => setSelectedDate(getTodayString())} className="px-3 landscape:px-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded">今天</button>
-                          <button onClick={() => changeDate(1)} className="w-8 h-8 landscape:w-7 landscape:h-7 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-right landscape:text-xs"></i></button>
+                          <button onClick={() => changeDate(1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-right landscape:text-[10px]"></i></button>
                       </div>
 
                       <button 
                          onClick={() => setViewMode(viewMode === 'calendar' ? 'home' : 'calendar')}
-                         className={`w-8 h-8 landscape:w-7 landscape:h-7 flex items-center justify-center rounded-lg border transition-colors ${viewMode === 'calendar' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                         className={`w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center rounded-lg border transition-colors ${viewMode === 'calendar' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
                       >
-                          <i className="fa-regular fa-calendar landscape:text-xs"></i>
+                          <i className="fa-regular fa-calendar landscape:text-[10px]"></i>
                       </button>
                   </div>
               </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-16 scrollbar-hide min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-2 landscape:pt-0 scrollbar-hide min-h-0">
               
               {viewMode === 'calendar' ? (
                   <CalendarView 
@@ -640,9 +626,9 @@ const AppContent: React.FC = () => {
                                 <div 
                                     key={reminder.id} 
                                     className={`
-                                        group relative bg-white rounded-2xl landscape:rounded-xl p-5 landscape:p-3 shadow-sm border-l-4 transition-all hover:shadow-md
+                                        group relative bg-white rounded-2xl landscape:rounded-xl p-5 landscape:p-2 shadow-sm border-l-4 transition-all hover:shadow-md
                                         ${reminder.isCompleted ? 'opacity-60 grayscale-[0.5] border-slate-200' : `${typeDef.color.replace('bg-', 'border-')} border-opacity-50`}
-                                        flex items-center gap-4 landscape:gap-3
+                                        flex items-center gap-4 landscape:gap-2
                                     `}
                                 >
                                     <button 
@@ -652,7 +638,7 @@ const AppContent: React.FC = () => {
                                             ${reminder.isCompleted ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 text-transparent hover:border-blue-400'}
                                         `}
                                     >
-                                        <i className="fa-solid fa-check text-sm landscape:text-xs"></i>
+                                        <i className="fa-solid fa-check text-sm landscape:text-[10px]"></i>
                                     </button>
 
                                     <div className="flex-1 min-w-0">
