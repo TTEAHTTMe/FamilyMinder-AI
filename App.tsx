@@ -1,5 +1,5 @@
 
-import React, { Component, useState, useEffect, useRef, ErrorInfo } from 'react';
+import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings } from './types';
 import VoiceInput from './components/VoiceInput';
@@ -20,7 +20,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -611,7 +611,7 @@ const AppContent: React.FC = () => {
     : currentUser;
 
   return (
-    <div className="h-screen flex flex-col md:flex-row bg-white overflow-hidden">
+    <div className="h-screen flex flex-col landscape:flex-row md:flex-row bg-white overflow-hidden">
       {/* Delete Confirmation Modal */}
       <ConfirmModal 
         isOpen={!!deleteTargetId}
@@ -657,16 +657,18 @@ const AppContent: React.FC = () => {
       />
 
       {/* --- SIDEBAR / NAVBAR --- */}
-      <div className="flex-shrink-0 bg-white md:w-28 md:h-full flex md:flex-col z-30 relative">
+      {/* UPDATE: Added landscape: classes to enforce side layout on mobile landscape */}
+      <div className="flex-shrink-0 bg-white md:w-28 landscape:w-24 md:h-full landscape:h-full flex md:flex-col landscape:flex-col z-30 relative shadow-xl landscape:shadow-none border-b landscape:border-b-0 md:border-b-0">
         
         {/* Custom Border Line */}
-        <div className="absolute z-0 bg-slate-200 hidden md:block top-0 bottom-0 right-0 w-px"></div>
-        <div className="absolute z-0 bg-slate-200 md:hidden left-0 right-0 bottom-0 h-px"></div>
+        <div className="absolute z-0 bg-slate-200 hidden md:block landscape:block top-0 bottom-0 right-0 w-px"></div>
+        {/* Hide bottom border in landscape */}
+        <div className="absolute z-0 bg-slate-200 md:hidden landscape:hidden left-0 right-0 bottom-0 h-px"></div>
 
         {/* --- FIXED SECTION (Settings + Home) --- */}
-        <div className="flex md:flex-col items-center flex-shrink-0 z-20 w-auto md:w-full relative">
+        <div className="flex md:flex-col landscape:flex-col items-center flex-shrink-0 z-20 w-auto md:w-full landscape:w-full relative">
             {/* Settings Button */}
-            <div className="p-2 md:p-3 w-full flex justify-center">
+            <div className="p-2 md:p-3 landscape:p-3 w-full flex justify-center">
               <button 
                   onClick={() => setIsSettingsModalOpen(true)}
                   className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors flex items-center justify-center relative z-20"
@@ -676,14 +678,14 @@ const AppContent: React.FC = () => {
             </div>
 
             {/* Divider */}
-            <div className="w-px h-6 md:w-16 md:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
+            <div className="w-px h-6 md:w-16 landscape:w-16 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
 
             {/* Home Button */}
-            <div className="w-full flex justify-end md:justify-center">
+            <div className="w-full flex justify-end md:justify-center landscape:justify-center">
                 <div 
                     onClick={switchToHome}
                     className={`
-                        relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4
+                        relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 landscape:py-4
                         ${viewMode === 'home' && !isSettingsModalOpen
                             ? themeBgClass + ' rounded-none z-10' 
                             : 'bg-white hover:bg-slate-50 z-10'}
@@ -691,11 +693,11 @@ const AppContent: React.FC = () => {
                 >
                     <button
                         className={`
-                            relative w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center text-3xl transition-all duration-300
+                            relative w-12 h-12 md:w-14 md:h-14 landscape:w-10 landscape:h-10 rounded-2xl flex items-center justify-center text-3xl transition-all duration-300
                             ${viewMode === 'home' ? 'bg-white text-slate-800 shadow-sm scale-105' : 'bg-slate-100 text-slate-500'}
                         `}
                     >
-                        <i className="fa-solid fa-house text-2xl"></i>
+                        <i className="fa-solid fa-house text-2xl landscape:text-lg"></i>
                     </button>
                     <span className={`pt-1 text-[10px] font-bold transition-all duration-300 ${viewMode === 'home' ? 'text-slate-800' : 'text-slate-400'}`}>
                         主页
@@ -704,13 +706,13 @@ const AppContent: React.FC = () => {
             </div>
             
              {/* Divider */}
-             <div className="w-px h-6 md:w-16 md:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
+             <div className="w-px h-6 md:w-16 landscape:w-16 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
 
         </div>
 
         {/* --- SCROLLABLE SECTION (Users) --- */}
-        <div className="flex-1 overflow-x-auto md:overflow-y-auto md:overflow-x-hidden w-full scrollbar-hide relative z-20">
-             <div className="flex md:flex-col items-center min-w-max md:w-full">
+        <div className="flex-1 overflow-x-auto md:overflow-y-auto landscape:overflow-y-auto landscape:overflow-x-hidden w-full scrollbar-hide relative z-20">
+             <div className="flex md:flex-col landscape:flex-col items-center min-w-max md:w-full landscape:w-full">
                 {users.map(u => {
                     const isSelected = viewMode === 'user' && currentUser.id === u.id;
                     
@@ -719,7 +721,7 @@ const AppContent: React.FC = () => {
                             key={u.id} 
                             onClick={() => switchToUser(u)}
                             className={`
-                                relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 px-2
+                                relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 landscape:py-3 px-2
                                 ${isSelected 
                                     ? themeBgClass + ' rounded-none z-10'
                                     : 'bg-white hover:bg-slate-50 z-10'}
@@ -728,7 +730,7 @@ const AppContent: React.FC = () => {
                             <button
                                 ref={el => { avatarRefs.current[u.id] = el; }}
                                 className={`
-                                    relative w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center text-3xl transition-all duration-300 flex-shrink-0
+                                    relative w-12 h-12 md:w-14 md:h-14 landscape:w-10 landscape:h-10 rounded-2xl flex items-center justify-center text-3xl landscape:text-xl transition-all duration-300 flex-shrink-0
                                     ${u.color} text-white
                                     ${isSelected ? 'shadow-lg scale-105 ring-4 ring-white' : 'opacity-90 hover:opacity-100 scale-95'}
                                 `}
@@ -742,13 +744,14 @@ const AppContent: React.FC = () => {
                     );
                 })}
                 {/* Spacer */}
-                <div className="w-4 md:h-24 flex-shrink-0"></div>
+                <div className="w-4 md:h-24 landscape:h-24 flex-shrink-0"></div>
              </div>
         </div>
       </div>
 
       {/* --- Main Content Area --- */}
-      <main className={`flex-1 relative flex flex-col transition-colors duration-500 ${viewMode === 'calendar' ? 'bg-white' : themeBgClass} overflow-hidden rounded-none shadow-none z-20 md:-ml-px -mt-px`}>
+      {/* UPDATE: Adjusted margins for landscape mode to remove top margin and add left margin overlap */}
+      <main className={`flex-1 relative flex flex-col transition-colors duration-500 ${viewMode === 'calendar' ? 'bg-white' : themeBgClass} overflow-hidden rounded-none shadow-none z-20 md:-ml-px landscape:-ml-px -mt-px landscape:mt-0`}>
         
         {viewMode === 'calendar' ? (
             <CalendarView 
@@ -757,9 +760,6 @@ const AppContent: React.FC = () => {
                 users={users}
                 onSelectDate={(dateStr) => {
                     setSelectedDate(dateStr);
-                    // Decide where to go back to (Home or keep current User?)
-                    // Let's go to Home so we see everyone, or keep user if they were selected?
-                    // Going Home is safer to see everything.
                     setViewMode('home');
                 }}
                 onClose={() => setViewMode('home')}
@@ -767,7 +767,7 @@ const AppContent: React.FC = () => {
         ) : (
             <>
             {/* Content Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 scrollbar-hide">
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 landscape:p-4 pb-32 scrollbar-hide">
                 <div className="max-w-2xl mx-auto">
                     {/* Date Navigation Header */}
                     <div className="flex justify-between items-end mb-8 sticky top-0 z-10 py-4 bg-inherit/95 backdrop-blur-sm border-b border-black/5">

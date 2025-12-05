@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Reminder, User } from '../types';
 
@@ -69,36 +70,36 @@ const CalendarView: React.FC<CalendarViewProps> = ({ currentDate, reminders, use
 
   return (
     <div className="flex-1 flex flex-col h-full bg-white animate-fade-in">
-        <div className="flex justify-between items-center p-6 border-b border-slate-100">
-            <h2 className="text-2xl font-bold text-slate-800">
+        <div className="flex justify-between items-center p-6 landscape:p-2 border-b border-slate-100">
+            <h2 className="text-2xl landscape:text-lg font-bold text-slate-800">
                 {viewYear}年 {viewMonth + 1}月
             </h2>
             <div className="flex gap-2">
-                <button onClick={prevMonth} className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
-                    <i className="fa-solid fa-chevron-left text-slate-600"></i>
+                <button onClick={prevMonth} className="w-10 h-10 landscape:w-8 landscape:h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
+                    <i className="fa-solid fa-chevron-left text-slate-600 landscape:text-xs"></i>
                 </button>
-                <button onClick={nextMonth} className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
-                    <i className="fa-solid fa-chevron-right text-slate-600"></i>
+                <button onClick={nextMonth} className="w-10 h-10 landscape:w-8 landscape:h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
+                    <i className="fa-solid fa-chevron-right text-slate-600 landscape:text-xs"></i>
                 </button>
-                <button onClick={onClose} className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center ml-4">
-                    <i className="fa-solid fa-times text-slate-600"></i>
+                <button onClick={onClose} className="w-10 h-10 landscape:w-8 landscape:h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center ml-4">
+                    <i className="fa-solid fa-times text-slate-600 landscape:text-xs"></i>
                 </button>
             </div>
         </div>
 
-        <div className="flex-1 p-4 overflow-y-auto">
+        <div className="flex-1 p-4 landscape:p-2 overflow-y-auto">
             {/* Week Headers */}
             <div className="grid grid-cols-7 mb-2">
                 {['日', '一', '二', '三', '四', '五', '六'].map(d => (
-                    <div key={d} className="text-center text-slate-400 font-bold py-2">{d}</div>
+                    <div key={d} className="text-center text-slate-400 font-bold py-2 landscape:py-0 landscape:text-xs">{d}</div>
                 ))}
             </div>
 
             {/* Days Grid */}
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-2 landscape:gap-1">
                 {days.map((day, index) => {
                     if (day === null) {
-                        return <div key={`empty-${index}`} className="aspect-square"></div>;
+                        return <div key={`empty-${index}`} className="aspect-square landscape:aspect-auto landscape:h-12"></div>;
                     }
 
                     const dayReminders = getRemindersForDay(day);
@@ -115,11 +116,11 @@ const CalendarView: React.FC<CalendarViewProps> = ({ currentDate, reminders, use
                             key={day}
                             onClick={() => handleDateClick(day)}
                             className={`
-                                aspect-square rounded-2xl flex flex-col items-center justify-start pt-2 relative border-2 transition-all
+                                aspect-square landscape:aspect-auto landscape:h-full landscape:min-h-[40px] rounded-2xl landscape:rounded-lg flex flex-col items-center justify-start pt-2 landscape:pt-1 relative border-2 transition-all
                                 ${isToday ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-slate-100 bg-white hover:border-blue-200 text-slate-700'}
                             `}
                         >
-                            <span className={`text-sm font-bold ${isToday ? 'text-blue-600' : ''}`}>{day}</span>
+                            <span className={`text-sm landscape:text-xs font-bold ${isToday ? 'text-blue-600' : ''}`}>{day}</span>
                             
                             {/* Dots for tasks */}
                             <div className="flex gap-1 flex-wrap justify-center mt-1 px-1">
@@ -127,7 +128,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ currentDate, reminders, use
                                     const u = users.find(user => user.id === uid);
                                     if (!u) return null;
                                     return (
-                                        <div key={uid} className={`w-2 h-2 rounded-full ${u.color}`}></div>
+                                        <div key={uid} className={`w-2 h-2 landscape:w-1.5 landscape:h-1.5 rounded-full ${u.color}`}></div>
                                     );
                                 })}
                             </div>
