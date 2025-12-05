@@ -20,7 +20,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -583,9 +583,9 @@ const AppContent: React.FC = () => {
       `}>
           
           {/* Header */}
-          <header className="px-6 py-6 landscape:py-3 flex justify-between items-end flex-shrink-0">
+          <header className="px-6 py-6 landscape:py-2 flex justify-between items-end flex-shrink-0">
               <div>
-                  <h1 className="text-3xl landscape:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                  <h1 className="text-3xl landscape:hidden font-bold text-slate-800 tracking-tight flex items-center gap-2">
                       {viewMode === 'home' ? (
                           <><span>📅</span> <span>智能日程</span></>
                       ) : (
@@ -593,20 +593,20 @@ const AppContent: React.FC = () => {
                       )}
                   </h1>
                   <div className="flex items-center gap-3 mt-1 landscape:mt-0">
-                      <p className="text-slate-500 font-medium landscape:text-sm">
+                      <p className="text-slate-500 font-medium landscape:text-xs landscape:font-bold">
                         {selectedDate === getTodayString() ? '今天' : selectedDate}
                          {' '}{new Date(selectedDate).toLocaleDateString('zh-CN', { weekday: 'long' })}
                       </p>
                       
                       <div className="flex bg-white rounded-lg shadow-sm border border-slate-100 p-0.5">
-                          <button onClick={() => changeDate(-1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-left landscape:text-xs"></i></button>
+                          <button onClick={() => changeDate(-1)} className="w-8 h-8 landscape:w-7 landscape:h-7 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-left landscape:text-xs"></i></button>
                           <button onClick={() => setSelectedDate(getTodayString())} className="px-3 landscape:px-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded">今天</button>
-                          <button onClick={() => changeDate(1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-right landscape:text-xs"></i></button>
+                          <button onClick={() => changeDate(1)} className="w-8 h-8 landscape:w-7 landscape:h-7 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-right landscape:text-xs"></i></button>
                       </div>
 
                       <button 
                          onClick={() => setViewMode(viewMode === 'calendar' ? 'home' : 'calendar')}
-                         className={`w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center rounded-lg border transition-colors ${viewMode === 'calendar' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                         className={`w-8 h-8 landscape:w-7 landscape:h-7 flex items-center justify-center rounded-lg border transition-colors ${viewMode === 'calendar' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
                       >
                           <i className="fa-regular fa-calendar landscape:text-xs"></i>
                       </button>
@@ -628,7 +628,7 @@ const AppContent: React.FC = () => {
                 <div className="space-y-3 landscape:space-y-2 max-w-2xl landscape:max-w-4xl">
                     {filteredReminders.length === 0 ? (
                         <div className="text-center py-20 opacity-40">
-                            <div className="text-6xl mb-4">🍃</div>
+                            <div className="text-6xl mb-4 landscape:hidden">🍃</div>
                             <p className="font-medium text-slate-500">没有安排，享受生活吧</p>
                         </div>
                     ) : (
@@ -657,7 +657,7 @@ const AppContent: React.FC = () => {
 
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="font-mono font-bold text-xl landscape:text-lg text-slate-700">{reminder.time}</span>
+                                            <span className="font-mono font-bold text-xl landscape:text-base text-slate-700">{reminder.time}</span>
                                             {viewMode === 'home' && (
                                                 <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-full">
                                                     <span className="text-xs">{rUser.avatar}</span>
@@ -671,13 +671,13 @@ const AppContent: React.FC = () => {
                                                 </span>
                                             )}
                                         </div>
-                                        <h3 className={`font-bold text-lg landscape:text-base text-slate-800 truncate ${reminder.isCompleted ? 'line-through decoration-2 decoration-slate-400 text-slate-500' : ''}`}>
+                                        <h3 className={`font-bold text-lg landscape:text-sm text-slate-800 truncate ${reminder.isCompleted ? 'line-through decoration-2 decoration-slate-400 text-slate-500' : ''}`}>
                                             {reminder.title}
                                         </h3>
                                     </div>
 
-                                    <div className={`w-10 h-10 landscape:w-8 landscape:h-8 rounded-xl ${typeDef.color} bg-opacity-10 flex items-center justify-center text-${typeDef.color.replace('bg-', '')}-600`}>
-                                        <i className={`fa-solid fa-${typeDef.icon} text-lg landscape:text-sm`}></i>
+                                    <div className={`w-10 h-10 landscape:w-7 landscape:h-7 rounded-xl ${typeDef.color} bg-opacity-10 flex items-center justify-center text-${typeDef.color.replace('bg-', '')}-600`}>
+                                        <i className={`fa-solid fa-${typeDef.icon} text-lg landscape:text-xs`}></i>
                                     </div>
 
                                     <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

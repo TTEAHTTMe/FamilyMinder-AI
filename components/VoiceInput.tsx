@@ -240,9 +240,19 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
         )}
 
         {isOpen && (
-            <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-                {/* Modal Container: Full height on mobile landscape, centered on desktop. Offset left for sidebar in landscape */}
-                <div className="bg-slate-100 w-full md:w-[500px] h-[90vh] landscape:h-full md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative landscape:left-16 landscape:w-[calc(100%-4rem)]">
+            <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center md:justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in landscape:justify-end">
+                {/* 
+                   Modal Layout:
+                   - Portrait: Bottom sheet (h-[90vh])
+                   - Desktop: Centered modal
+                   - Landscape (Mobile Kiosk): Right-side drawer (w-80 h-full right-0)
+                */}
+                <div className={`
+                    bg-slate-100 shadow-2xl flex flex-col overflow-hidden animate-slide-up relative
+                    w-full h-[90vh] rounded-t-3xl 
+                    md:w-[500px] md:h-[700px] md:rounded-3xl
+                    landscape:w-80 landscape:h-full landscape:rounded-none landscape:right-0 landscape:top-0 landscape:bottom-0 landscape:fixed
+                `}>
                     <div className="bg-white px-4 py-2 shadow-sm flex items-center justify-between flex-shrink-0 z-10 border-b border-slate-100">
                         <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i className="fa-solid fa-robot text-sm"></i></div>

@@ -17,13 +17,17 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   const [ticks, setTicks] = useState(0);
   const [snoozeMenuId, setSnoozeMenuId] = useState<string | null>(null);
   const [isGlobalSnoozeOpen, setIsGlobalSnoozeOpen] = useState(false);
+  const [isAudioLocked, setIsAudioLocked] = useState(false);
 
   useEffect(() => {
     audioRef.current = new Audio(ALARM_SOUND_DATA_URI);
     audioRef.current.loop = true;
     const playPromise = audioRef.current.play();
     if (playPromise !== undefined) {
-        playPromise.catch(error => { console.log("Audio autoplay prevented."); });
+        playPromise.catch(error => { 
+            console.log("Audio autoplay prevented, showing unlock button."); 
+            setIsAudioLocked(true);
+        });
     }
     return () => {
         if (audioRef.current) {
@@ -32,6 +36,17 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
         }
     };
   }, []);
+
+  const handleUnlockAudio = () => {
+      if (audioRef.current) {
+          audioRef.current.play().then(() => setIsAudioLocked(false)).catch(e => alert("无法播放声音"));
+      }
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+          // Dummy speak to unlock iOS
+          const msg = new SpeechSynthesisUtterance('');
+          window.speechSynthesis.speak(msg);
+      }
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => { onSnooze(null, 5); }, 3 * 60 * 1000);
@@ -116,18 +131,25 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
       }
     };
 
-    speak();
-    const interval = setInterval(() => { speak(); setTicks(t => t + 1); }, 15000); 
+    if (!isAudioLocked) speak();
+    const interval = setInterval(() => { if(!isAudioLocked) { speak(); setTicks(t => t + 1); } }, 15000); 
     return () => {
         clearInterval(interval);
         if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     };
-  }, [reminders, users, voiceSettings]);
+  }, [reminders, users, voiceSettings, isAudioLocked]);
 
   if (reminders.length === 0) return null;
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-red-600/90 backdrop-blur-sm animate-pulse-ring p-4 landscape:p-2">
+      {isAudioLocked && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[310]">
+              <button onClick={handleUnlockAudio} className="bg-white text-red-600 px-6 py-2 rounded-full font-bold shadow-lg animate-bounce">
+                  🔊 点击启用声音
+              </button>
+          </div>
+      )}
       <div className="bg-white rounded-3xl landscape:rounded-xl p-6 landscape:p-2 max-w-md landscape:max-w-2xl w-full shadow-2xl scale-100 max-h-[85vh] landscape:max-h-[95vh] flex flex-col landscape:flex-row gap-4 landscape:gap-2">
         
         {/* Header Section */}
