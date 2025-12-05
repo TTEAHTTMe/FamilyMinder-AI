@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, ErrorInfo, Component } from 'react';
+import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings } from './types';
 import VoiceInput from './components/VoiceInput';
@@ -19,7 +19,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
     error: null
@@ -484,13 +484,12 @@ const AppContent: React.FC = () => {
       'rose': 'bg-rose-50', 'yellow': 'bg-yellow-50', 'purple': 'bg-purple-50',
       'cyan': 'bg-cyan-50', 'orange': 'bg-orange-50', 'slate': 'bg-slate-50'
   };
-  const themeTextMap: {[key: string]: string} = {
+  const themeTextClass = {
       'blue': 'text-blue-900', 'emerald': 'text-emerald-900', 'indigo': 'text-indigo-900',
       'rose': 'text-rose-900', 'yellow': 'text-yellow-900', 'purple': 'text-purple-900',
       'cyan': 'text-cyan-900', 'orange': 'text-orange-900', 'slate': 'text-slate-900'
-  };
+  }[themeColorName] || 'text-slate-900';
   const themeBgClass = themeBgMap[themeColorName] || 'bg-slate-50';
-  const themeTextClass = themeTextMap[themeColorName] || 'text-slate-900';
   const voiceContextUser = viewMode === 'home' ? { id: 'all', name: '全家人', avatar: '🏠', color: 'bg-slate-500' } : currentUser;
 
   return (
@@ -538,7 +537,7 @@ const AppContent: React.FC = () => {
       />
 
       {/* SIDEBAR */}
-      <div className="flex-shrink-0 bg-white md:w-28 landscape:w-24 md:h-full landscape:h-full flex md:flex-col landscape:flex-col z-30 relative shadow-xl landscape:shadow-none border-b landscape:border-b-0 md:border-b-0">
+      <div className="flex-shrink-0 bg-white md:w-28 landscape:w-16 md:h-full landscape:h-full flex md:flex-col landscape:flex-col z-30 relative shadow-xl landscape:shadow-none border-b landscape:border-b-0 md:border-b-0">
         <div className="absolute z-0 bg-slate-200 hidden md:block landscape:block top-0 bottom-0 right-0 w-px"></div>
         <div className="absolute z-0 bg-slate-200 md:hidden landscape:hidden left-0 right-0 bottom-0 h-px"></div>
 
@@ -551,16 +550,16 @@ const AppContent: React.FC = () => {
                   <i className="fa-solid fa-gear text-lg"></i>
               </button>
             </div>
-            <div className="w-px h-6 md:w-16 landscape:w-16 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
+            <div className="w-px h-6 md:w-16 landscape:w-8 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
             <div className="w-full flex justify-end md:justify-center landscape:justify-center">
                 <div onClick={switchToHome} className={`relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 landscape:py-2 ${viewMode === 'home' && !isSettingsModalOpen ? themeBgClass + ' rounded-none z-10' : 'bg-white hover:bg-slate-50 z-10'}`}>
-                    <button className={`relative w-12 h-12 md:w-14 md:h-14 landscape:w-10 landscape:h-10 rounded-2xl flex items-center justify-center text-3xl landscape:text-lg transition-all duration-300 ${viewMode === 'home' ? 'bg-white text-slate-800 shadow-sm scale-105' : 'bg-slate-100 text-slate-500'}`}>
-                        <i className="fa-solid fa-house text-2xl landscape:text-lg"></i>
+                    <button className={`relative w-12 h-12 md:w-14 md:h-14 landscape:w-8 landscape:h-8 rounded-2xl flex items-center justify-center text-3xl landscape:text-base transition-all duration-300 ${viewMode === 'home' ? 'bg-white text-slate-800 shadow-sm scale-105' : 'bg-slate-100 text-slate-500'}`}>
+                        <i className="fa-solid fa-house text-2xl landscape:text-base"></i>
                     </button>
                     <span className={`pt-1 text-[10px] font-bold transition-all duration-300 ${viewMode === 'home' ? 'text-slate-800' : 'text-slate-400'}`}>主页</span>
                 </div>
             </div>
-             <div className="w-px h-6 md:w-16 landscape:w-16 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
+             <div className="w-px h-6 md:w-16 landscape:w-8 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
         </div>
 
         <div className="flex-1 overflow-x-auto md:overflow-y-auto landscape:overflow-y-auto landscape:overflow-x-hidden w-full scrollbar-hide relative z-20">
@@ -569,7 +568,7 @@ const AppContent: React.FC = () => {
                     const isSelected = viewMode === 'user' && currentUser.id === u.id;
                     return (
                         <div key={u.id} onClick={() => switchToUser(u)} className={`relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 landscape:py-2 px-2 ${isSelected ? themeBgClass + ' rounded-none z-10' : 'bg-white hover:bg-slate-50 z-10'}`}>
-                            <button ref={el => { avatarRefs.current[u.id] = el; }} className={`relative w-12 h-12 md:w-14 md:h-14 landscape:w-10 landscape:h-10 rounded-2xl flex items-center justify-center text-3xl landscape:text-lg transition-all duration-300 flex-shrink-0 ${u.color} text-white ${isSelected ? 'shadow-lg scale-105 ring-4 ring-white' : 'opacity-90 hover:opacity-100 scale-95'}`}>
+                            <button ref={el => { avatarRefs.current[u.id] = el; }} className={`relative w-12 h-12 md:w-14 md:h-14 landscape:w-8 landscape:h-8 rounded-2xl flex items-center justify-center text-3xl landscape:text-base transition-all duration-300 flex-shrink-0 ${u.color} text-white ${isSelected ? 'shadow-lg scale-105 ring-4 ring-white' : 'opacity-90 hover:opacity-100 scale-95'}`}>
                                 {u.avatar}
                             </button>
                             <span className={`pt-1 text-[10px] font-bold truncate max-w-[60px] text-center transition-all duration-300 ${isSelected ? themeTextClass : 'text-slate-400'}`}>{u.name}</span>
@@ -587,9 +586,9 @@ const AppContent: React.FC = () => {
             <CalendarView currentDate={new Date(selectedDate)} reminders={reminders} users={users} onSelectDate={(dateStr) => { setSelectedDate(dateStr); setViewMode('home'); }} onClose={() => setViewMode('home')} />
         ) : (
             <>
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 landscape:p-3 pb-32 scrollbar-hide">
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 landscape:p-2 pb-32 landscape:pb-12 scrollbar-hide">
                 <div className="max-w-2xl mx-auto">
-                    <div className="flex justify-between items-end mb-6 landscape:mb-4 sticky top-0 z-10 py-4 landscape:py-2 bg-inherit/95 backdrop-blur-sm border-b border-black/5">
+                    <div className="flex justify-between items-end mb-6 landscape:mb-2 sticky top-0 z-10 py-4 landscape:py-2 bg-inherit/95 backdrop-blur-sm border-b border-black/5">
                         <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 text-sm font-medium opacity-60">
                                 <button onClick={() => changeDate(-1)} className="hover:bg-black/5 p-1 rounded"><i className="fa-solid fa-chevron-left"></i></button>
@@ -602,8 +601,8 @@ const AppContent: React.FC = () => {
                                     <button onClick={() => setSelectedDate(getTodayString())} className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded ml-2">回今天</button>
                                 )}
                             </div>
-                            <h2 className={`text-3xl landscape:text-xl font-bold ${themeTextClass}`}>
-                                {viewMode === 'home' ? '今日家庭概览' : `${currentUser.name}的提醒`}
+                            <h2 className={`text-3xl landscape:text-lg font-bold ${themeTextClass}`}>
+                                {viewMode === 'home' ? '今日概览' : `${currentUser.name}`}
                             </h2>
                         </div>
                         <div className={`text-sm font-bold px-3 py-1 rounded-full bg-white/60 backdrop-blur-sm shadow-sm ${themeTextClass}`}>
@@ -612,9 +611,9 @@ const AppContent: React.FC = () => {
                     </div>
 
                     {displayedReminders.length === 0 ? (
-                        <div className="text-center py-20 bg-white/40 backdrop-blur-sm rounded-3xl border-2 border-dashed border-white/50">
-                            <div className="text-6xl mb-4 opacity-50 animate-bounce">{viewMode === 'home' ? '🏠' : currentUser.avatar}</div>
-                            <p className={`text-xl font-bold ${themeTextClass} opacity-60`}>该日期没有安排</p>
+                        <div className="text-center py-20 landscape:py-6 bg-white/40 backdrop-blur-sm rounded-3xl border-2 border-dashed border-white/50">
+                            <div className="text-6xl landscape:text-3xl mb-4 opacity-50 animate-bounce">{viewMode === 'home' ? '🏠' : currentUser.avatar}</div>
+                            <p className={`text-xl landscape:text-base font-bold ${themeTextClass} opacity-60`}>无安排</p>
                             <p className="text-sm text-slate-500 mt-2 opacity-70">点击下方添加</p>
                         </div>
                     ) : (
@@ -623,10 +622,10 @@ const AppContent: React.FC = () => {
                             const rUser = users.find(u => u.id === reminder.userId) || users[0];
                             // COMPACT UI for small screens
                             return (
-                                <div key={reminder.id} className={`group relative overflow-hidden rounded-xl p-3 md:p-5 transition-all duration-300 ${reminder.isCompleted ? 'bg-slate-100/60 border border-transparent opacity-60' : 'bg-white shadow-md shadow-slate-200/20 border border-white hover:shadow-lg'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <button onClick={() => toggleComplete(reminder.id)} className={`flex-shrink-0 w-8 h-8 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center transition-all ${reminder.isCompleted ? 'bg-green-500 border-green-500 text-white' : `border-slate-300 text-transparent hover:border-slate-400`}`}>
-                                            <i className="fa-solid fa-check text-sm"></i>
+                                <div key={reminder.id} className={`group relative overflow-hidden rounded-xl p-3 md:p-5 landscape:p-2 transition-all duration-300 ${reminder.isCompleted ? 'bg-slate-100/60 border border-transparent opacity-60' : 'bg-white shadow-md shadow-slate-200/20 border border-white hover:shadow-lg'}`}>
+                                    <div className="flex items-center gap-3 landscape:gap-2">
+                                        <button onClick={() => toggleComplete(reminder.id)} className={`flex-shrink-0 w-8 h-8 md:w-8 md:h-8 landscape:w-6 landscape:h-6 rounded-full border-2 flex items-center justify-center transition-all ${reminder.isCompleted ? 'bg-green-500 border-green-500 text-white' : `border-slate-300 text-transparent hover:border-slate-400`}`}>
+                                            <i className="fa-solid fa-check text-sm landscape:text-xs"></i>
                                         </button>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-center">
@@ -638,12 +637,12 @@ const AppContent: React.FC = () => {
                                                             </span>
                                                         </div>
                                                     )}
-                                                    <div className={`font-bold text-base md:text-lg leading-snug truncate ${reminder.isCompleted ? 'text-slate-600 decoration-slate-500 decoration-2 line-through' : 'text-slate-800'}`}>
+                                                    <div className={`font-bold text-base md:text-lg landscape:text-sm leading-snug truncate ${reminder.isCompleted ? 'text-slate-600 decoration-slate-500 decoration-2 line-through' : 'text-slate-800'}`}>
                                                         {reminder.title}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                                                    <span className={`text-xl font-mono font-bold tracking-tight ${reminder.isCompleted ? 'text-slate-400' : 'text-slate-600'}`}>
+                                                    <span className={`text-xl landscape:text-base font-mono font-bold tracking-tight ${reminder.isCompleted ? 'text-slate-400' : 'text-slate-600'}`}>
                                                         {reminder.time}
                                                     </span>
                                                 </div>
@@ -659,8 +658,8 @@ const AppContent: React.FC = () => {
                                                      </span>
                                                 )}
                                                 <div className="flex-1"></div>
-                                                <button onClick={(e) => handleEditClick(e, reminder)} className="text-slate-400 hover:text-blue-600 px-2 py-1"><i className="fa-solid fa-pencil"></i></button>
-                                                <button onClick={(e) => requestDeleteReminder(e, reminder.id)} className="text-slate-400 hover:text-red-600 px-2 py-1"><i className="fa-solid fa-trash-can"></i></button>
+                                                <button onClick={(e) => handleEditClick(e, reminder)} className="text-slate-400 hover:text-blue-600 px-2 py-1"><i className="fa-solid fa-pencil text-sm"></i></button>
+                                                <button onClick={(e) => requestDeleteReminder(e, reminder.id)} className="text-slate-400 hover:text-red-600 px-2 py-1"><i className="fa-solid fa-trash-can text-sm"></i></button>
                                             </div>
                                         </div>
                                     </div>
