@@ -43,10 +43,12 @@ export interface AIResponse {
 }
 
 export interface VoiceSettings {
-  voiceURI: string;
+  provider?: 'web' | 'openai'; // New: Choose provider
+  voiceURI: string; // Used for Web Speech API (Voice name) OR OpenAI (Voice ID like 'alloy')
   pitch: number;
   rate: number;
   volume: number;
+  model?: string; // For OpenAI, e.g. 'tts-1'
 }
 
 export type AIProvider = 'gemini' | 'deepseek' | 'moonshot' | 'siliconflow' | 'custom';

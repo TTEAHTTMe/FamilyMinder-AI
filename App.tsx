@@ -155,8 +155,8 @@ const AppContent: React.FC = () => {
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(() => {
     try {
         const saved = localStorage.getItem('family_voice_settings');
-        return saved ? JSON.parse(saved) : { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 };
-    } catch { return { voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0 }; }
+        return saved ? JSON.parse(saved) : { provider: 'web', voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0, model: 'tts-1' };
+    } catch { return { provider: 'web', voiceURI: '', pitch: 1.0, rate: 1.0, volume: 1.0, model: 'tts-1' }; }
   });
 
   const [aiSettings, setAiSettings] = useState<AISettings>(() => {
@@ -229,302 +229,542 @@ const AppContent: React.FC = () => {
       latestDataRef.current = { users, reminders, voiceSettings, aiSettings, cloudSettings, reminderTypes };
   }, [users, reminders, voiceSettings, aiSettings, cloudSettings, reminderTypes]);
 
-  useEffect(() => { localStorage.setItem('family_users', JSON.stringify(users)); }, [users]);
+  useEffect(() => {
+      const interval = setInterval(() => {
+          const currentSystemDate = getTodayString();
+          if (currentSystemDate !== systemTodayRef.current) {
+               // Date rollover!
+               systemTodayRef.current = currentSystemDate;
+               // If user is looking at "today" (which is now yesterday), bump them to the new today
+               setSelectedDate(prev => {
+                   if (prev < currentSystemDate) return currentSystemDate;
+                   return prev;
+               });
+          }
+      }, 1000);
+      return () => clearInterval(interval);
+  }, []);
+
+  // Auto Cloud Sync Heartbeat (every minute)
+  useEffect(() => {
+      const interval = setInterval(() => {
+          const { cloudSettings: cs, users: u, reminders: r, voiceSettings: vs, aiSettings: ai, reminderTypes: rt } = latestDataRef.current;
+          if (cs.autoSyncEnabled && cs.apiKey && cs.binId) {
+              const now = Date.now();
+              const lastSync = cs.lastAutoSync || 0;
+              const intervalMs = cs.autoSyncInterval * 60 * 1000;
+              
+              if (now - lastSync > intervalMs) {
+                  console.log("Triggering Auto Cloud Sync...");
+                  const data = { users: u, reminders: r, voiceSettings: vs, aiSettings: ai, reminderTypes: rt, version: "1.1", lastUpdated: new Date().toISOString() };
+                  updateCloudBackup(cs.apiKey, cs.binId, data).then(() => {
+                      console.log("Auto Sync Success");
+                      setCloudSettings({ ...cs, lastAutoSync: now });
+                  }).catch(err => console.error("Auto Sync Failed", err));
+              }
+          }
+      }, 60000);
+      return () => clearInterval(interval);
+  }, []);
+
+  // Persistence
+  useEffect(() => {
+    localStorage.setItem('family_users', JSON.stringify(users));
+    // Auto local backup side-effect
+    localStorage.setItem('family_auto_backup', JSON.stringify({
+        users, reminders, voiceSettings, aiSettings, reminderTypes, backupTime: new Date().toISOString()
+    }));
+  }, [users, reminders, voiceSettings, aiSettings, reminderTypes]);
+
   useEffect(() => { localStorage.setItem('family_reminders', JSON.stringify(reminders)); }, [reminders]);
   useEffect(() => { localStorage.setItem('family_voice_settings', JSON.stringify(voiceSettings)); }, [voiceSettings]);
   useEffect(() => { localStorage.setItem('family_ai_settings', JSON.stringify(aiSettings)); }, [aiSettings]);
   useEffect(() => { localStorage.setItem('family_cloud_settings', JSON.stringify(cloudSettings)); }, [cloudSettings]);
   useEffect(() => { localStorage.setItem('family_reminder_types', JSON.stringify(reminderTypes)); }, [reminderTypes]);
 
-  useEffect(() => {
-      const backupData = {
-          users, reminders, voiceSettings, aiSettings, reminderTypes, backupTime: new Date().toISOString(), type: 'auto'
-      };
-      localStorage.setItem('family_auto_backup', JSON.stringify(backupData));
-  }, [users, reminders, voiceSettings, aiSettings, reminderTypes]);
-
-  useEffect(() => {
-      const checkAndSync = async () => {
-          const { cloudSettings, users, reminders, voiceSettings, aiSettings, reminderTypes } = latestDataRef.current;
-          if (!cloudSettings.autoSyncEnabled || !cloudSettings.apiKey || !cloudSettings.binId) return;
-          const now = Date.now();
-          const lastSync = cloudSettings.lastAutoSync || 0;
-          const intervalMs = cloudSettings.autoSyncInterval * 60 * 1000;
-
-          if (now - lastSync > intervalMs) {
-              try {
-                  const syncData = {
-                      users, reminders, voiceSettings, aiSettings, reminderTypes, version: "1.1", lastUpdated: new Date().toISOString()
-                  };
-                  await updateCloudBackup(cloudSettings.apiKey, cloudSettings.binId, syncData);
-                  setCloudSettings(prev => ({ ...prev, lastAutoSync: Date.now() }));
-              } catch (e) { console.error(e); }
-          }
-      };
-      const timer = setInterval(checkAndSync, 60000);
-      return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const unlockAudio = () => {
-        if (!audioUnlockedRef.current) {
-            const audio = new Audio(ALARM_SOUND_DATA_URI);
-            audio.volume = 0;
-            audio.play().then(() => { audioUnlockedRef.current = true; }).catch(() => {});
-        }
-    };
-    window.addEventListener('click', unlockAudio);
-    window.addEventListener('touchstart', unlockAudio);
-    return () => {
-        window.removeEventListener('click', unlockAudio);
-        window.removeEventListener('touchstart', unlockAudio);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (viewMode === 'user') {
-        const el = avatarRefs.current[currentUser.id];
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  const resetInactivityTimer = () => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    if (viewMode !== 'home') {
+      inactivityTimerRef.current = setTimeout(() => {
+        setViewMode('home');
+      }, 180000); // 3 minutes
     }
-  }, [currentUser.id, viewMode]);
+  };
 
   useEffect(() => {
-    const resetTimer = () => {
-        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-        if (viewMode === 'user') {
-            inactivityTimerRef.current = setTimeout(() => { setViewMode('home'); }, 3 * 60 * 1000);
-        }
-    };
-    window.addEventListener('mousemove', resetTimer);
-    window.addEventListener('click', resetTimer);
-    window.addEventListener('keydown', resetTimer);
-    window.addEventListener('touchstart', resetTimer);
-    window.addEventListener('scroll', resetTimer);
-    resetTimer();
+    window.addEventListener('click', resetInactivityTimer);
+    window.addEventListener('touchstart', resetInactivityTimer);
+    window.addEventListener('keydown', resetInactivityTimer);
     return () => {
-        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-        window.removeEventListener('mousemove', resetTimer);
-        window.removeEventListener('click', resetTimer);
-        window.removeEventListener('keydown', resetTimer);
-        window.removeEventListener('touchstart', resetTimer);
-        window.removeEventListener('scroll', resetTimer);
+      window.removeEventListener('click', resetInactivityTimer);
+      window.removeEventListener('touchstart', resetInactivityTimer);
+      window.removeEventListener('keydown', resetInactivityTimer);
     };
   }, [viewMode]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const checkAlarms = () => {
       const now = new Date();
-      const todayString = getTodayString();
       const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-      const currentTimestamp = now.getTime();
-
-      if (todayString !== systemTodayRef.current) {
-          setSelectedDate(prevDate => prevDate === systemTodayRef.current ? todayString : prevDate);
-          systemTodayRef.current = todayString;
-      }
-
-      setReminders(currentReminders => {
-        let hasUpdates = false;
-        const nextReminders = [...currentReminders];
-        const newActiveReminders: Reminder[] = [];
-
-        nextReminders.forEach((reminder, index) => {
-           if (reminder.isCompleted) return;
-           let shouldRemind = false;
-           if (reminder.date === todayString && reminder.time === currentTime) {
-                const lastReminded = reminder.lastRemindedAt || 0;
-                if (Date.now() - lastReminded > 60000) shouldRemind = true;
-           }
-           if (reminder.snoozeUntil && currentTimestamp >= reminder.snoozeUntil) shouldRemind = true;
-
-           if (shouldRemind) {
-               nextReminders[index] = { 
-                   ...reminder, 
-                   lastRemindedAt: Date.now(),
-                   snoozeUntil: undefined
-               };
-               hasUpdates = true;
-               newActiveReminders.push(nextReminders[index]);
-           }
-        });
-
-        if (newActiveReminders.length > 0) {
-            setActiveReminders(prev => {
-                const combined = [...prev];
-                newActiveReminders.forEach(newR => {
-                    if (!combined.find(existing => existing.id === newR.id)) combined.push(newR);
-                });
-                return combined;
-            });
+      const currentFullDate = getTodayString();
+      
+      // Unlock audio context on first user interaction if needed (handled by browser usually but good to persist)
+      
+      const toTrigger = reminders.filter(r => {
+        // Only trigger if:
+        // 1. Not completed
+        // 2. Time matches
+        // 3. Date matches
+        // 4. Hasn't been triggered in the last 60 seconds
+        // 5. If snoozed, wait until snooze time
+        if (r.isCompleted) return false;
+        if (r.date !== currentFullDate) return false; // Strict date check
+        
+        // Snooze logic
+        if (r.snoozeUntil) {
+             if (now.getTime() < r.snoozeUntil) return false;
+        } else {
+             if (r.time !== currentTime) return false;
         }
-        return hasUpdates ? nextReminders : currentReminders;
+
+        const lastReminded = r.lastRemindedAt || 0;
+        return (Date.now() - lastReminded) > 60000;
       });
-    }, 1000);
+
+      if (toTrigger.length > 0) {
+        // Update lastRemindedAt
+        const nowTs = Date.now();
+        const updatedReminders = reminders.map(r => 
+           toTrigger.find(tr => tr.id === r.id) 
+           ? { ...r, lastRemindedAt: nowTs, snoozeUntil: undefined } 
+           : r
+        );
+        setReminders(updatedReminders);
+        
+        // Add to active alarms if not already there
+        setActiveReminders(prev => {
+            const newIds = toTrigger.map(t => t.id);
+            const existingIds = prev.map(p => p.id);
+            const uniqueToAdd = toTrigger.filter(t => !existingIds.includes(t.id));
+            return [...prev, ...uniqueToAdd];
+        });
+      }
+    };
+
+    const interval = setInterval(checkAlarms, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [reminders]);
 
-  const handleSaveReminder = (data: Omit<Reminder, 'id'>) => {
-    if (editingReminder) {
-        setReminders(prev => prev.map(r => r.id === editingReminder.id ? { ...r, ...data } : r));
-        setEditingReminder(null);
-    } else {
-        const newReminder: Reminder = { ...data, id: uuidv4() };
-        setReminders(prev => [...prev, newReminder]);
-    }
-  };
+  const handleNextOccurrence = (reminder: Reminder): Reminder | null => {
+      if (!reminder.recurrence || reminder.recurrence === 'once') return null;
 
-  const handleEditClick = (e: React.MouseEvent, reminder: Reminder) => {
-      e.stopPropagation();
-      setEditingReminder(reminder);
-      setIsManualModalOpen(true);
+      const current = new Date(reminder.date + 'T' + reminder.time);
+      let next = new Date(current);
+      
+      switch (reminder.recurrence) {
+          case 'daily': next.setDate(next.getDate() + 1); break;
+          case 'weekly': next.setDate(next.getDate() + 7); break;
+          case 'monthly': next.setMonth(next.getMonth() + 1); break;
+          case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
+      }
+      // Formatting
+      const y = next.getFullYear();
+      const m = String(next.getMonth() + 1).padStart(2, '0');
+      const d = String(next.getDate()).padStart(2, '0');
+      
+      return {
+          ...reminder,
+          id: uuidv4(),
+          date: `${y}-${m}-${d}`,
+          isCompleted: false,
+          lastRemindedAt: undefined,
+          snoozeUntil: undefined
+      };
   };
 
   const toggleComplete = (id: string) => {
-    const r = reminders.find(item => item.id === id);
-    if (!r) return;
-
-    // Logic for next recurrence
-    const nextReminders: Reminder[] = [];
-    if (!r.isCompleted && r.recurrence && r.recurrence !== 'once') {
-        const nextDate = new Date(r.date);
-        if (r.recurrence === 'daily') nextDate.setDate(nextDate.getDate() + 1);
-        else if (r.recurrence === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
-        else if (r.recurrence === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
-        else if (r.recurrence === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
-        
-        const year = nextDate.getFullYear();
-        const month = String(nextDate.getMonth() + 1).padStart(2, '0');
-        const day = String(nextDate.getDate()).padStart(2, '0');
-        
-        nextReminders.push({
-            ...r,
-            id: uuidv4(),
-            date: `${year}-${month}-${day}`,
-            isCompleted: false,
-            lastRemindedAt: undefined,
-            snoozeUntil: undefined
-        });
+    const reminder = reminders.find(r => r.id === id);
+    if (!reminder) return;
+    
+    // Safety check for speech
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        if ('speechSynthesis' in window) {
+             window.speechSynthesis.cancel();
+             const remaining = activeReminders.filter(r => r.id !== id);
+             if (remaining.length === 0) {
+                 const msg = new SpeechSynthesisUtterance("太棒了，所有任务都完成了。");
+                 msg.lang = 'zh-CN';
+                 window.speechSynthesis.speak(msg);
+             }
+        }
     }
 
-    setReminders(prev => {
-        let updated = prev.map(item => item.id === id ? { ...item, isCompleted: !item.isCompleted } : item);
-        if (nextReminders.length > 0) updated = [...updated, ...nextReminders];
-        return updated;
-    });
-  };
-
-  const requestDeleteReminder = (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      setDeleteTargetId(id);
-  };
-
-  const confirmDeleteReminder = () => {
-    if (deleteTargetId) {
-        setReminders(prev => prev.filter(r => r.id !== deleteTargetId));
-        setDeleteTargetId(null);
+    // Logic for Recurrence
+    let newReminders = reminders.map(r => r.id === id ? { ...r, isCompleted: true } : r);
+    
+    if (reminder.recurrence && reminder.recurrence !== 'once') {
+        const nextInstance = handleNextOccurrence(reminder);
+        if (nextInstance) newReminders.push(nextInstance);
     }
+    
+    setReminders(newReminders);
+    setActiveReminders(activeReminders.filter(r => r.id !== id));
   };
 
-  const handleSingleAlarmComplete = (id: string) => {
-      // Use the toggleComplete logic to ensure recurrence works for alarms too
-      toggleComplete(id);
-      setActiveReminders(prev => {
-          const next = prev.filter(r => r.id !== id);
-          if (next.length === 0) {
-              if (typeof window !== 'undefined' && window.speechSynthesis) {
-                  const msg = new SpeechSynthesisUtterance("太棒了，所有任务已完成！");
-                  msg.lang = 'zh-CN';
-                  if (voiceSettings.voiceURI) {
-                    const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceSettings.voiceURI);
-                    if (voice) msg.voice = voice;
-                  }
-                  msg.rate = voiceSettings.rate;
-                  msg.pitch = voiceSettings.pitch;
-                  window.speechSynthesis.speak(msg);
-              }
-          }
-          return next;
-      });
-  };
-
-  const handleSnoozeReminder = (id: string | null, durationMinutes: number) => {
+  const handleSnooze = (id: string | null, durationMinutes: number) => {
     const snoozeTime = Date.now() + durationMinutes * 60 * 1000;
-    const snoozeIds = id ? [id] : activeReminders.map(r => r.id);
-    setReminders(prev => prev.map(r => {
-        if (snoozeIds.includes(r.id)) return { ...r, snoozeUntil: snoozeTime };
-        return r;
-    }));
-    setActiveReminders(prev => prev.filter(r => !snoozeIds.includes(r.id)));
+    
+    if (id) {
+        // Snooze specific reminder
+        setReminders(reminders.map(r => 
+            r.id === id ? { ...r, snoozeUntil: snoozeTime } : r
+        ));
+        setActiveReminders(activeReminders.filter(r => r.id !== id));
+    } else {
+        // Snooze ALL active
+        const activeIds = activeReminders.map(r => r.id);
+        setReminders(reminders.map(r => 
+            activeIds.includes(r.id) ? { ...r, snoozeUntil: snoozeTime } : r
+        ));
+        setActiveReminders([]);
+    }
   };
 
-  const handleOpenManualModal = () => {
-      setEditingReminder(null);
-      setIsManualModalOpen(true);
+  const handleAddReminder = (data: Omit<Reminder, 'id'>) => {
+    const newReminder = { ...data, id: uuidv4(), isCompleted: false };
+    setReminders([...reminders, newReminder]);
   };
 
-  const switchToUser = (u: User) => { setCurrentUser(u); setViewMode('user'); };
-  const switchToHome = () => { setViewMode('home'); };
+  const handleEditReminder = (data: Omit<Reminder, 'id'>) => {
+      if (editingReminder) {
+          setReminders(reminders.map(r => r.id === editingReminder.id ? { ...data, id: editingReminder.id } : r));
+          setEditingReminder(null);
+      }
+  };
+
+  const handleDeleteReminder = () => {
+      if (deleteTargetId) {
+          setReminders(reminders.filter(r => r.id !== deleteTargetId));
+          setDeleteTargetId(null);
+      }
+  };
+
+  const switchUser = (user: User) => {
+    setCurrentUser(user);
+    setViewMode('user');
+    // Scroll logic
+    setTimeout(() => {
+        if (avatarRefs.current[user.id]) {
+            avatarRefs.current[user.id]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
+    }, 100);
+  };
+  
+  const goHome = () => {
+      setViewMode('home');
+      setCurrentUser({ id: 'all', name: '全家人', avatar: '🏠', color: 'bg-slate-500' });
+  };
+
+  // Filter Logic:
+  // 1. Filter by Date (selectedDate)
+  // 2. Filter by User (unless Home mode)
+  // 3. Sort: Incomplete first, then by Time
+  const filteredReminders = reminders
+    .filter(r => r.date === selectedDate)
+    .filter(r => viewMode === 'home' ? true : r.userId === currentUser.id)
+    .sort((a, b) => {
+        if (a.isCompleted === b.isCompleted) return a.time.localeCompare(b.time);
+        return a.isCompleted ? 1 : -1;
+    });
 
   const changeDate = (offset: number) => {
-      const date = new Date(selectedDate);
-      date.setDate(date.getDate() + offset);
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      setSelectedDate(`${year}-${month}-${day}`);
+      const d = new Date(selectedDate);
+      d.setDate(d.getDate() + offset);
+      // Format YYYY-MM-DD manually to avoid UTC issues
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      setSelectedDate(`${y}-${m}-${day}`);
   };
 
-  const filteredReminders = reminders.filter(r => {
-      if (r.date !== selectedDate) return false;
-      if (viewMode === 'home') return true;
-      return r.userId === currentUser.id;
-  });
-
-  const displayedReminders = filteredReminders.sort((a, b) => {
-      if (a.isCompleted === b.isCompleted) return a.time.localeCompare(b.time);
-      return a.isCompleted ? 1 : -1;
-  });
-
-  const themeColorName = viewMode === 'home' ? 'slate' : getColorName(currentUser.color);
-  const themeBgMap: {[key: string]: string} = {
-      'blue': 'bg-blue-50', 'emerald': 'bg-emerald-50', 'indigo': 'bg-indigo-50',
-      'rose': 'bg-rose-50', 'yellow': 'bg-yellow-50', 'purple': 'bg-purple-50',
-      'cyan': 'bg-cyan-50', 'orange': 'bg-orange-50', 'slate': 'bg-slate-50'
-  };
-  const themeTextClass = {
-      'blue': 'text-blue-900', 'emerald': 'text-emerald-900', 'indigo': 'text-indigo-900',
-      'rose': 'text-rose-900', 'yellow': 'text-yellow-900', 'purple': 'text-purple-900',
-      'cyan': 'text-cyan-900', 'orange': 'text-orange-900', 'slate': 'text-slate-900'
-  }[themeColorName] || 'text-slate-900';
-  const themeBgClass = themeBgMap[themeColorName] || 'bg-slate-50';
-  const voiceContextUser = viewMode === 'home' ? { id: 'all', name: '全家人', avatar: '🏠', color: 'bg-slate-500' } : currentUser;
+  const userThemeColor = viewMode === 'home' ? 'bg-slate-500' : currentUser.color;
+  const themeName = getColorName(userThemeColor);
 
   return (
-    <div className="h-screen flex flex-col landscape:flex-row md:flex-row bg-white overflow-hidden">
-      <ConfirmModal 
-        isOpen={!!deleteTargetId}
-        title="确认删除"
-        message="您确定要删除这条提醒吗？"
-        onConfirm={confirmDeleteReminder}
-        onCancel={() => setDeleteTargetId(null)}
-      />
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row h-screen overflow-hidden">
+      
+      {/* 
+        NAVIGATION SIDEBAR / TOPBAR 
+        Optimization for Landscape Mobile (Kiosk):
+        - Sidebar moves to LEFT on landscape (md:flex-col landscape:flex-col)
+        - Width reduced on landscape (w-16)
+      */}
+      <nav className={`
+        flex-shrink-0 z-30 bg-white shadow-xl relative transition-all duration-300
+        flex flex-row md:flex-col landscape:flex-col
+        w-full md:w-24 landscape:w-16
+        h-20 md:h-full landscape:h-full
+        items-center justify-between
+        border-b md:border-b-0 md:border-r border-slate-100
+      `}>
+          
+          {/* Custom Border Layer to hide seams */}
+          <div className="absolute top-0 bottom-0 right-0 w-px bg-slate-200 hidden md:block landscape:block z-0"></div>
 
-      {activeReminders.length > 0 && (
-        <AlarmOverlay 
-            reminders={activeReminders} 
+          {/* Fixed Section: Settings & Home */}
+          <div className="flex md:flex-col landscape:flex-col items-center w-auto md:w-full landscape:w-full p-2 md:p-0 landscape:p-0 gap-2 md:gap-4 landscape:gap-2">
+               <button 
+                  onClick={() => setIsSettingsModalOpen(true)}
+                  className="w-10 h-10 md:w-12 md:h-12 landscape:w-8 landscape:h-8 rounded-2xl bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 flex items-center justify-center transition-colors my-2 md:mt-6 landscape:mt-2 mx-auto"
+                >
+                  <i className="fa-solid fa-gear text-lg landscape:text-sm"></i>
+               </button>
+               
+               <div className="w-px h-8 bg-slate-200 md:w-8 md:h-px landscape:w-6 landscape:h-px"></div>
+
+               {/* Home Button */}
+               <div className="relative w-full flex justify-center">
+                    <button 
+                        onClick={goHome}
+                        className={`
+                            relative z-10 w-12 h-12 md:w-16 md:h-16 landscape:w-12 landscape:h-12 flex flex-col items-center justify-center transition-all duration-300
+                            ${viewMode === 'home' ? 'text-slate-700 scale-110' : 'text-slate-300 hover:text-slate-500 scale-100'}
+                        `}
+                    >
+                        <span className="text-2xl md:text-3xl landscape:text-xl drop-shadow-sm">🏠</span>
+                        {viewMode === 'home' && <span className="text-[10px] font-bold mt-1 text-slate-600 landscape:hidden">全家</span>}
+                    </button>
+                     {/* Active Tab Background Logic for Home */}
+                    {viewMode === 'home' && (
+                        <div className={`
+                            absolute z-10 bg-slate-50
+                            inset-0 md:left-0 md:right-0 landscape:left-0 landscape:right-0
+                            rounded-t-2xl md:rounded-l-3xl md:rounded-t-none md:rounded-r-none
+                            mb-[-1px] md:mb-0 md:mr-[-1px] landscape:mr-[-1px]
+                            shadow-[0_0_15px_rgba(0,0,0,0.05)]
+                            md:w-full md:h-24 landscape:h-16
+                            top-auto bottom-0 md:top-auto
+                        `}></div>
+                    )}
+               </div>
+          </div>
+
+          {/* Scrollable User List */}
+          <div className="flex-1 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto landscape:overflow-y-auto scrollbar-hide w-full flex flex-row md:flex-col landscape:flex-col items-center gap-3 md:gap-6 landscape:gap-2 px-4 md:px-0 landscape:px-0 py-2 md:py-4 landscape:py-2">
+             {users.map(user => {
+                 const isActive = viewMode === 'user' && currentUser.id === user.id;
+                 return (
+                     <div key={user.id} className="relative w-full flex justify-center group">
+                        <button
+                            ref={el => { avatarRefs.current[user.id] = el }}
+                            onClick={() => switchUser(user)}
+                            className={`
+                                relative z-20 w-12 h-12 md:w-14 md:h-14 landscape:w-10 landscape:h-10 rounded-full flex items-center justify-center text-2xl md:text-3xl landscape:text-xl transition-all duration-300 border-2 shadow-sm
+                                ${isActive ? `border-${user.color.split('-')[1]}-500 scale-110 ring-2 ring-${user.color.split('-')[1]}-100` : 'border-white opacity-90 scale-95 hover:scale-105 hover:opacity-100'}
+                                ${user.color} text-white
+                            `}
+                        >
+                            {user.avatar}
+                        </button>
+                        
+                        {/* Name Label */}
+                        <span className={`
+                            absolute -bottom-4 md:bottom-auto md:top-1 landscape:hidden md:left-14 md:ml-2 
+                            text-[10px] font-bold bg-slate-800 text-white px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none
+                        `}>
+                            {user.name}
+                        </span>
+                        
+                        {/* Persistent Name Label for mobile/tablet */}
+                        <span className={`
+                           absolute -bottom-5 text-[9px] font-bold text-slate-400 w-full text-center truncate px-1
+                           md:hidden landscape:hidden
+                           ${isActive ? 'text-slate-800' : ''}
+                        `}>
+                            {user.name}
+                        </span>
+
+                        {/* Active Tab Background Logic for Users */}
+                        {isActive && (
+                            <div className={`
+                                absolute z-10 
+                                ${user.color.replace('500', '50')} 
+                                inset-0 -mx-2 md:mx-0
+                                rounded-t-2xl md:rounded-l-3xl md:rounded-t-none md:rounded-r-none
+                                mb-[-1px] md:mb-0 md:mr-[-1px] landscape:mr-[-1px]
+                                md:w-full md:h-24 landscape:h-16
+                                top-auto bottom-[-10px] md:-top-5 landscape:-top-3
+                                shadow-[0_0_15px_rgba(0,0,0,0.05)]
+                            `}></div>
+                        )}
+                     </div>
+                 );
+             })}
+          </div>
+      </nav>
+
+      {/* MAIN CONTENT AREA */}
+      <main className={`
+         flex-1 relative z-20 overflow-hidden flex flex-col transition-colors duration-500
+         ${viewMode === 'home' ? 'bg-slate-50' : currentUser.color.replace('500', '50')}
+         rounded-none md:-ml-px landscape:-ml-px mt-[-1px] md:mt-0 landscape:mt-0
+      `}>
+          
+          {/* Header */}
+          <header className="px-6 py-6 landscape:py-3 flex justify-between items-end flex-shrink-0">
+              <div>
+                  <h1 className="text-3xl landscape:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                      {viewMode === 'home' ? (
+                          <><span>🏡</span> <span>温馨家庭</span></>
+                      ) : (
+                          <><span>{currentUser.avatar}</span> <span>{currentUser.name}的提醒</span></>
+                      )}
+                  </h1>
+                  <div className="flex items-center gap-3 mt-1 landscape:mt-0">
+                      <p className="text-slate-500 font-medium landscape:text-sm">
+                        {selectedDate === getTodayString() ? '今天' : selectedDate}
+                         {' '}{new Date(selectedDate).toLocaleDateString('zh-CN', { weekday: 'long' })}
+                      </p>
+                      
+                      {/* Date Navigation */}
+                      <div className="flex bg-white rounded-lg shadow-sm border border-slate-100 p-0.5">
+                          <button onClick={() => changeDate(-1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-left landscape:text-xs"></i></button>
+                          <button onClick={() => setSelectedDate(getTodayString())} className="px-3 landscape:px-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded">今天</button>
+                          <button onClick={() => changeDate(1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-right landscape:text-xs"></i></button>
+                      </div>
+
+                      {/* Calendar Toggle */}
+                      <button 
+                         onClick={() => setViewMode(viewMode === 'calendar' ? 'home' : 'calendar')}
+                         className={`w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center rounded-lg border transition-colors ${viewMode === 'calendar' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                      >
+                          <i className="fa-regular fa-calendar landscape:text-xs"></i>
+                      </button>
+                  </div>
+              </div>
+          </header>
+
+          {/* Content Body */}
+          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-16 scrollbar-hide">
+              
+              {viewMode === 'calendar' ? (
+                  <CalendarView 
+                    currentDate={new Date(selectedDate)}
+                    reminders={reminders}
+                    users={users}
+                    onSelectDate={(d) => { setSelectedDate(d); setViewMode('home'); }}
+                    onClose={() => setViewMode('home')}
+                  />
+              ) : (
+                <div className="space-y-3 landscape:space-y-2 max-w-2xl landscape:max-w-4xl">
+                    {filteredReminders.length === 0 ? (
+                        <div className="text-center py-20 opacity-40">
+                            <div className="text-6xl mb-4">🍃</div>
+                            <p className="font-medium text-slate-500">没有安排，享受生活吧</p>
+                        </div>
+                    ) : (
+                        filteredReminders.map(reminder => {
+                            const rUser = users.find(u => u.id === reminder.userId) || currentUser;
+                            const typeDef = reminderTypes.find(t => t.id === reminder.type) || DEFAULT_REMINDER_TYPES[2];
+
+                            return (
+                                <div 
+                                    key={reminder.id} 
+                                    className={`
+                                        group relative bg-white rounded-2xl landscape:rounded-xl p-5 landscape:p-3 shadow-sm border-l-4 transition-all hover:shadow-md
+                                        ${reminder.isCompleted ? 'opacity-60 grayscale-[0.5] border-slate-200' : `${typeDef.color.replace('bg-', 'border-')} border-opacity-50`}
+                                        flex items-center gap-4 landscape:gap-3
+                                    `}
+                                >
+                                    {/* Checkbox */}
+                                    <button 
+                                        onClick={() => toggleComplete(reminder.id)}
+                                        className={`
+                                            w-8 h-8 landscape:w-6 landscape:h-6 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0
+                                            ${reminder.isCompleted ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 text-transparent hover:border-blue-400'}
+                                        `}
+                                    >
+                                        <i className="fa-solid fa-check text-sm landscape:text-xs"></i>
+                                    </button>
+
+                                    {/* Time & Content */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="font-mono font-bold text-xl landscape:text-lg text-slate-700">{reminder.time}</span>
+                                            {viewMode === 'home' && (
+                                                <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                    <span className="text-xs">{rUser.avatar}</span>
+                                                    <span className="text-[10px] font-bold text-slate-600 truncate max-w-[60px]">{rUser.name}</span>
+                                                </div>
+                                            )}
+                                            {reminder.recurrence && reminder.recurrence !== 'once' && (
+                                                <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 rounded font-bold">
+                                                    <i className="fa-solid fa-repeat mr-1"></i>
+                                                    {{'daily':'每天', 'weekly':'每周', 'monthly':'每月', 'yearly':'每年'}[reminder.recurrence]}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h3 className={`font-bold text-lg landscape:text-base text-slate-800 truncate ${reminder.isCompleted ? 'line-through decoration-2 decoration-slate-400 text-slate-500' : ''}`}>
+                                            {reminder.title}
+                                        </h3>
+                                    </div>
+
+                                    {/* Type Icon */}
+                                    <div className={`w-10 h-10 landscape:w-8 landscape:h-8 rounded-xl ${typeDef.color} bg-opacity-10 flex items-center justify-center text-${typeDef.color.replace('bg-', '')}-600`}>
+                                        <i className={`fa-solid fa-${typeDef.icon} text-lg landscape:text-sm`}></i>
+                                    </div>
+
+                                    {/* Edit/Delete Actions (Hover/Focus) */}
+                                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); setEditingReminder(reminder); setIsManualModalOpen(true); }}
+                                            className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center bg-white rounded-lg shadow-sm text-black hover:text-blue-600 z-20"
+                                        >
+                                            <i className="fa-solid fa-pen text-xs"></i>
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); setDeleteTargetId(reminder.id); }}
+                                            className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center bg-white rounded-lg shadow-sm text-black hover:text-red-500 z-20"
+                                        >
+                                            <i className="fa-solid fa-trash text-xs"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+              )}
+          </div>
+
+          <VoiceInput 
+            currentUser={currentUser} 
             users={users}
-            onComplete={handleSingleAlarmComplete}
-            onSnooze={handleSnoozeReminder}
+            onAddReminder={handleAddReminder}
+            onManualInput={() => { setEditingReminder(null); setIsManualModalOpen(true); }}
             voiceSettings={voiceSettings}
-        />
-      )}
+            aiSettings={aiSettings}
+          />
+
+      </main>
+
+      <AlarmOverlay 
+        reminders={activeReminders}
+        users={users}
+        onComplete={toggleComplete}
+        onSnooze={handleSnooze}
+        voiceSettings={voiceSettings}
+        aiSettings={aiSettings}
+      />
 
       <ManualInputModal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}
-        onSave={handleSaveReminder}
+        onSave={editingReminder ? handleEditReminder : handleAddReminder}
         users={users}
-        currentUser={voiceContextUser}
+        currentUser={currentUser}
         initialData={editingReminder || undefined}
         reminderTypes={reminderTypes}
       />
@@ -546,152 +786,26 @@ const AppContent: React.FC = () => {
         setReminderTypes={setReminderTypes}
       />
 
-      {/* SIDEBAR */}
-      <div className="flex-shrink-0 bg-white md:w-28 landscape:w-16 md:h-full landscape:h-full flex md:flex-col landscape:flex-col z-30 relative shadow-xl landscape:shadow-none border-b landscape:border-b-0 md:border-b-0">
-        <div className="absolute z-0 bg-slate-200 hidden md:block landscape:block top-0 bottom-0 right-0 w-px"></div>
-        <div className="absolute z-0 bg-slate-200 md:hidden landscape:hidden left-0 right-0 bottom-0 h-px"></div>
+      {/* Custom Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTargetId}
+        title="确认删除"
+        message="确定要删除这个提醒吗？此操作无法撤销。"
+        onConfirm={handleDeleteReminder}
+        onCancel={() => setDeleteTargetId(null)}
+      />
 
-        <div className="flex md:flex-col landscape:flex-col items-center flex-shrink-0 z-20 w-auto md:w-full landscape:w-full relative">
-            <div className="p-2 md:p-3 landscape:p-2 w-full flex justify-center">
-              <button 
-                  onClick={() => setIsSettingsModalOpen(true)}
-                  className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors flex items-center justify-center relative z-20"
-              >
-                  <i className="fa-solid fa-gear text-lg"></i>
-              </button>
-            </div>
-            <div className="w-px h-6 md:w-16 landscape:w-8 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
-            <div className="w-full flex justify-end md:justify-center landscape:justify-center">
-                <div onClick={switchToHome} className={`relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 landscape:py-2 ${viewMode === 'home' && !isSettingsModalOpen ? themeBgClass + ' rounded-none z-10' : 'bg-white hover:bg-slate-50 z-10'}`}>
-                    <button className={`relative w-12 h-12 md:w-14 md:h-14 landscape:w-8 landscape:h-8 rounded-2xl flex items-center justify-center text-3xl landscape:text-base transition-all duration-300 ${viewMode === 'home' ? 'bg-white text-slate-800 shadow-sm scale-105' : 'bg-slate-100 text-slate-500'}`}>
-                        <i className="fa-solid fa-house text-2xl landscape:text-base"></i>
-                    </button>
-                    <span className={`pt-1 text-[10px] font-bold transition-all duration-300 ${viewMode === 'home' ? 'text-slate-800' : 'text-slate-400'}`}>主页</span>
-                </div>
-            </div>
-             <div className="w-px h-6 md:w-16 landscape:w-8 md:h-px landscape:h-px bg-slate-100 my-1 mx-auto relative z-20"></div>
-        </div>
-
-        <div className="flex-1 overflow-x-auto md:overflow-y-auto landscape:overflow-y-auto landscape:overflow-x-hidden w-full scrollbar-hide relative z-20">
-             <div className="flex md:flex-col landscape:flex-col items-center min-w-max md:w-full landscape:w-full">
-                {users.map(u => {
-                    const isSelected = viewMode === 'user' && currentUser.id === u.id;
-                    return (
-                        <div key={u.id} onClick={() => switchToUser(u)} className={`relative w-full flex flex-col items-center group cursor-pointer transition-all duration-300 py-3 md:py-4 landscape:py-2 px-2 ${isSelected ? themeBgClass + ' rounded-none z-10' : 'bg-white hover:bg-slate-50 z-10'}`}>
-                            <button ref={el => { avatarRefs.current[u.id] = el; }} className={`relative w-12 h-12 md:w-14 md:h-14 landscape:w-8 landscape:h-8 rounded-2xl flex items-center justify-center text-3xl landscape:text-base transition-all duration-300 flex-shrink-0 ${u.color} text-white ${isSelected ? 'shadow-lg scale-105 ring-4 ring-white' : 'opacity-90 hover:opacity-100 scale-95'}`}>
-                                {u.avatar}
-                            </button>
-                            <span className={`pt-1 text-[10px] font-bold truncate max-w-[60px] text-center transition-all duration-300 ${isSelected ? themeTextClass : 'text-slate-400'}`}>{u.name}</span>
-                        </div>
-                    );
-                })}
-                <div className="w-4 md:h-24 landscape:h-24 flex-shrink-0"></div>
-             </div>
-        </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <main className={`flex-1 relative flex flex-col transition-colors duration-500 ${viewMode === 'calendar' ? 'bg-white' : themeBgClass} overflow-hidden rounded-none shadow-none z-20 md:-ml-px landscape:-ml-px -mt-px landscape:mt-0`}>
-        {viewMode === 'calendar' ? (
-            <CalendarView currentDate={new Date(selectedDate)} reminders={reminders} users={users} onSelectDate={(dateStr) => { setSelectedDate(dateStr); setViewMode('home'); }} onClose={() => setViewMode('home')} />
-        ) : (
-            <>
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 landscape:p-2 pb-32 landscape:pb-12 scrollbar-hide">
-                <div className="max-w-2xl mx-auto">
-                    <div className="flex justify-between items-end mb-6 landscape:mb-2 sticky top-0 z-10 py-4 landscape:py-2 bg-inherit/95 backdrop-blur-sm border-b border-black/5">
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2 text-sm font-medium opacity-60">
-                                <button onClick={() => changeDate(-1)} className="hover:bg-black/5 p-1 rounded"><i className="fa-solid fa-chevron-left"></i></button>
-                                <span>{selectedDate}</span>
-                                <button onClick={() => changeDate(1)} className="hover:bg-black/5 p-1 rounded"><i className="fa-solid fa-chevron-right"></i></button>
-                                <button onClick={() => setViewMode('calendar')} className="ml-2 w-7 h-7 flex items-center justify-center rounded bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors" title="日历视图">
-                                    <i className="fa-solid fa-calendar-days text-sm"></i>
-                                </button>
-                                {selectedDate !== getTodayString() && (
-                                    <button onClick={() => setSelectedDate(getTodayString())} className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded ml-2">回今天</button>
-                                )}
-                            </div>
-                            <h2 className={`text-3xl landscape:text-lg font-bold ${themeTextClass}`}>
-                                {viewMode === 'home' ? '今日概览' : `${currentUser.name}`}
-                            </h2>
-                        </div>
-                        <div className={`text-sm font-bold px-3 py-1 rounded-full bg-white/60 backdrop-blur-sm shadow-sm ${themeTextClass}`}>
-                            {displayedReminders.filter(r => !r.isCompleted).length} 待办
-                        </div>
-                    </div>
-
-                    {displayedReminders.length === 0 ? (
-                        <div className="text-center py-20 landscape:py-6 bg-white/40 backdrop-blur-sm rounded-3xl border-2 border-dashed border-white/50">
-                            <div className="text-6xl landscape:text-3xl mb-4 opacity-50 animate-bounce">{viewMode === 'home' ? '🏠' : currentUser.avatar}</div>
-                            <p className={`text-xl landscape:text-base font-bold ${themeTextClass} opacity-60`}>无安排</p>
-                            <p className="text-sm text-slate-500 mt-2 opacity-70">点击下方添加</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3 landscape:space-y-2">
-                        {displayedReminders.map((reminder) => {
-                            const rUser = users.find(u => u.id === reminder.userId) || users[0];
-                            const rType = reminderTypes.find(t => t.id === reminder.type) || DEFAULT_REMINDER_TYPES[2];
-                            // COMPACT UI for small screens
-                            return (
-                                <div key={reminder.id} className={`group relative overflow-hidden rounded-xl p-3 md:p-5 landscape:p-2 transition-all duration-300 ${reminder.isCompleted ? 'bg-slate-100/60 border border-transparent opacity-60' : 'bg-white shadow-md shadow-slate-200/20 border border-white hover:shadow-lg'}`}>
-                                    <div className="flex items-center gap-3 landscape:gap-2">
-                                        <button onClick={() => toggleComplete(reminder.id)} className={`flex-shrink-0 w-8 h-8 md:w-8 md:h-8 landscape:w-6 landscape:h-6 rounded-full border-2 flex items-center justify-center transition-all ${reminder.isCompleted ? 'bg-green-500 border-green-500 text-white' : `border-slate-300 text-transparent hover:border-slate-400`}`}>
-                                            <i className="fa-solid fa-check text-sm landscape:text-xs"></i>
-                                        </button>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex justify-between items-center">
-                                                <div className="flex flex-col min-w-0">
-                                                    {viewMode === 'home' && (
-                                                        <div className="flex items-center gap-2 mb-0.5">
-                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${rUser.color} text-white font-bold whitespace-nowrap`}>
-                                                                {rUser.avatar} {rUser.name}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    <div className={`font-bold text-base md:text-lg landscape:text-sm leading-snug truncate ${reminder.isCompleted ? 'text-slate-600 decoration-slate-500 decoration-2 line-through' : 'text-slate-800'}`}>
-                                                        {reminder.title}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                                                    <span className={`text-xl landscape:text-base font-mono font-bold tracking-tight ${reminder.isCompleted ? 'text-slate-400' : 'text-slate-600'}`}>
-                                                        {reminder.time}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className={`text-[10px] font-bold ${rType.color.replace('bg-', 'text-')} bg-opacity-10 px-1.5 py-0.5 rounded bg-gray-100`}>
-                                                    <i className={`fa-solid fa-${rType.icon} mr-1`}></i>{rType.label}
-                                                </span>
-                                                {reminder.recurrence && reminder.recurrence !== 'once' && (
-                                                     <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
-                                                        <i className="fa-solid fa-rotate-right mr-1"></i>
-                                                        {reminder.recurrence === 'daily' ? '每天' : reminder.recurrence === 'weekly' ? '每周' : reminder.recurrence === 'monthly' ? '每月' : '每年'}
-                                                     </span>
-                                                )}
-                                                <div className="flex-1"></div>
-                                                <button onClick={(e) => handleEditClick(e, reminder)} className="text-slate-400 hover:text-blue-600 px-2 py-1"><i className="fa-solid fa-pencil text-sm"></i></button>
-                                                <button onClick={(e) => requestDeleteReminder(e, reminder.id)} className="text-slate-400 hover:text-red-600 px-2 py-1"><i className="fa-solid fa-trash-can text-sm"></i></button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        </div>
-                    )}
-                </div>
-            </div>
-            <VoiceInput currentUser={voiceContextUser} users={users} onAddReminder={handleSaveReminder} onManualInput={handleOpenManualModal} voiceSettings={voiceSettings} aiSettings={aiSettings} />
-            </>
-        )}
-      </main>
     </div>
   );
 };
 
+// Main App Component with Error Boundary
 const App: React.FC = () => {
-    return <ErrorBoundary><AppContent /></ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
 };
 
 export default App;

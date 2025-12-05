@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User, VoiceSettings, AISettings, AIProvider, Reminder, CloudSettings, ReminderTypeDefinition } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -303,12 +302,37 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {activeTab === 'voice' && (
             <div className="space-y-4 landscape:space-y-2">
-              <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}>
-                   {availableVoices.length === 0 && <option value="">默认</option>}
-                   {availableVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
-              </select>
-              <div><label className="text-xs font-bold text-slate-500">语速 {voiceSettings.rate}</label><input type="range" min="0.5" max="2" step="0.1" value={voiceSettings.rate} onChange={(e) => setVoiceSettings({...voiceSettings, rate: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg"/></div>
-              <div><label className="text-xs font-bold text-slate-500">音调 {voiceSettings.pitch}</label><input type="range" min="0.5" max="2" step="0.1" value={voiceSettings.pitch} onChange={(e) => setVoiceSettings({...voiceSettings, pitch: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg"/></div>
+              <div className="flex gap-2">
+                 <button onClick={() => setVoiceSettings({ ...voiceSettings, provider: 'web' })} className={`flex-1 py-2 rounded text-xs font-bold ${voiceSettings.provider !== 'openai' ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>浏览器原生</button>
+                 <button onClick={() => setVoiceSettings({ ...voiceSettings, provider: 'openai' })} className={`flex-1 py-2 rounded text-xs font-bold ${voiceSettings.provider === 'openai' ? 'bg-green-600 text-white' : 'bg-slate-100'}`}>OpenAI TTS</button>
+              </div>
+              {voiceSettings.provider !== 'openai' ? (
+                <>
+                  <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}>
+                       {availableVoices.length === 0 && <option value="">默认</option>}
+                       {availableVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                  </select>
+                  <div><label className="text-xs font-bold text-slate-500">语速 {voiceSettings.rate}</label><input type="range" min="0.5" max="2" step="0.1" value={voiceSettings.rate} onChange={(e) => setVoiceSettings({...voiceSettings, rate: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg"/></div>
+                  <div><label className="text-xs font-bold text-slate-500">音调 {voiceSettings.pitch}</label><input type="range" min="0.5" max="2" step="0.1" value={voiceSettings.pitch} onChange={(e) => setVoiceSettings({...voiceSettings, pitch: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg"/></div>
+                </>
+              ) : (
+                <>
+                   <div className="text-xs text-slate-500 mb-2">使用 AI 设置中的 API Key</div>
+                   <div>
+                       <label className="text-xs font-bold text-slate-500">模型</label>
+                       <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.model || 'tts-1'} onChange={(e) => setVoiceSettings({...voiceSettings, model: e.target.value})}>
+                           <option value="tts-1">TTS-1 (标准)</option>
+                           <option value="tts-1-hd">TTS-1-HD (高清)</option>
+                       </select>
+                   </div>
+                   <div>
+                       <label className="text-xs font-bold text-slate-500">音色</label>
+                       <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI || 'alloy'} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}>
+                           {['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].map(v => <option key={v} value={v}>{v}</option>)}
+                       </select>
+                   </div>
+                </>
+              )}
               <button onClick={handleTestVoice} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm">测试</button>
             </div>
           )}
@@ -321,8 +345,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                      ))}
                  </div>
                  <div className="col-span-2">
-                     <label className="text-xs font-bold text-slate-500">API Key</label>
-                     <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                     {aiSettings.activeProvider !== 'gemini' && (
+                        <>
+                            <label className="text-xs font-bold text-slate-500">API Key</label>
+                            <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                        </>
+                     )}
+                     {aiSettings.activeProvider === 'gemini' && (
+                         <div className="p-2 bg-blue-50 text-blue-700 rounded text-xs">
+                             Gemini API Key is configured via system environment.
+                         </div>
+                     )}
                  </div>
                  {aiSettings.activeProvider !== 'gemini' && (
                     <>
