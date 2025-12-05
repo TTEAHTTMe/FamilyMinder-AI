@@ -1,5 +1,3 @@
-
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, AIConfig } from "../types";
 
@@ -33,7 +31,7 @@ const extractJsonFromText = (text: string): AIResponse => {
         // Fall through
     }
 
-    throw new Error(`无法从 AI 回复中提取有效 JSON。原始回复: ${text.substring(0, 100)}...`);
+    throw new Error(`无法从 AI 回复中提取有效 JSON。`);
 };
 
 // Helper for OpenAI-compatible APIs
@@ -72,15 +70,27 @@ const callOpenAICompatible = async (
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`AI Request Failed (${response.status}): ${err}`);
+            const errText = await response.text();
+            console.error("AI API Error Response:", errText);
+
+            if (response.status === 401) {
+                throw new Error("API Key 无效或未授权 (401)。请检查设置中的 Key。");
+            }
+            if (response.status === 429) {
+                 throw new Error("API 余额不足或请求过快 (429)。请检查您的服务商额度/账单。");
+            }
+            if (response.status === 404) {
+                 throw new Error("模型不存在或路径错误 (404)。请检查 Base URL 和模型名称。");
+            }
+            
+            throw new Error(`AI 请求失败 (${response.status})`);
         }
 
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content;
         
         if (!content) {
-            throw new Error("AI returned empty content");
+            throw new Error("AI 返回了空内容");
         }
 
         console.log("AI Raw Response:", content);
@@ -105,16 +115,15 @@ export const parseReminderWithGemini = async (
     providerType?: string
 ): Promise<AIResponse | null> => {
 
-  // GUIDELINE: Relax check for Gemini as it uses process.env.API_KEY
-  if (!aiConfig || (!aiConfig.apiKey && providerType !== 'custom' && providerType !== 'gemini')) {
+  // Logic: Use provided key if available, otherwise fall back to env for Gemini, otherwise throw.
+  const apiKey = aiConfig?.apiKey || (providerType === 'gemini' ? process.env.API_KEY : '');
+
+  if (!apiKey && providerType !== 'custom') {
     throw new Error("请先在设置中配置 API Key");
   }
 
   const todayStr = referenceDate || new Date().toISOString().split('T')[0];
   const validNamesStr = validUserNames ? validUserNames.join(', ') : '';
-  
-  // Logic to determine if we are in "Home Mode" (generic context) or "User Mode"
-  // If currentUserName is '全家人' or 'all', we are in Home Mode.
   
   const systemPrompt = `
       You are a smart family assistant. Your job is to classify the user's intent and return a JSON object.
@@ -178,18 +187,17 @@ export const parseReminderWithGemini = async (
       return callOpenAICompatible(
           systemPrompt, 
           text, 
-          aiConfig.apiKey, 
-          aiConfig.baseUrl, 
-          aiConfig.model
+          apiKey!, 
+          aiConfig?.baseUrl || '', 
+          aiConfig?.model || ''
       );
   }
 
   // --- GOOGLE GEMINI ---
   try {
-    // GUIDELINE: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     const response = await ai.models.generateContent({
-      model: aiConfig.model || "gemini-2.5-flash",
+      model: aiConfig?.model || "gemini-2.5-flash",
       contents: `${systemPrompt}
       Input: "${text}"`,
       config: {

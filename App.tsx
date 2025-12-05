@@ -1,6 +1,5 @@
-
-import React, { Component, useState, useEffect, useRef, ErrorInfo } from 'react';
-import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString, DEFAULT_REMINDER_TYPES } from './constants';
+import React, { useState, useEffect, useRef, ErrorInfo, ReactNode } from 'react';
+import { MOCK_USERS, INITIAL_REMINDERS, getTodayString, DEFAULT_REMINDER_TYPES } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings, ReminderTypeDefinition } from './types';
 import VoiceInput from './components/VoiceInput';
 import AlarmOverlay from './components/AlarmOverlay';
@@ -12,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 // --- Error Boundary Component ---
 interface ErrorBoundaryProps {
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -20,14 +19,11 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null
-    };
-  }
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null
+  };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -370,11 +366,13 @@ const AppContent: React.FC = () => {
     const reminder = reminders.find(r => r.id === id);
     if (!reminder) return;
     
+    // Logic: Allow unchecking (reverting to incomplete)
     if (reminder.isCompleted) {
          setReminders(reminders.map(r => r.id === id ? { ...r, isCompleted: false } : r));
          return;
     }
 
+    // Safety check for TTS
     if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) {
              window.speechSynthesis.cancel();
              const remaining = activeReminders.filter(r => r.id !== id);
@@ -569,16 +567,17 @@ const AppContent: React.FC = () => {
          rounded-none md:-ml-px landscape:-ml-px mt-[-1px] md:mt-0 landscape:mt-0
       `}>
           
-          <header className="px-6 py-6 landscape:py-1 landscape:h-8 landscape:min-h-0 flex justify-between items-end flex-shrink-0">
+          {/* HEADER RESTORED for Landscape */}
+          <header className="px-6 py-6 landscape:px-4 landscape:py-2 flex justify-between items-end flex-shrink-0">
               <div>
-                  <h1 className="text-3xl landscape:hidden font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                  <h1 className="text-3xl landscape:text-xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
                       {viewMode === 'home' ? (
                           <><span>📅</span> <span>智能日程</span></>
                       ) : (
                           <><span>{currentUser.avatar}</span> <span>{currentUser.name}的提醒</span></>
                       )}
                   </h1>
-                  <div className="flex items-center gap-3 mt-1 landscape:mt-0">
+                  <div className="flex items-center gap-3 mt-1 landscape:mt-1">
                       <p className="text-slate-500 font-medium landscape:text-xs landscape:font-bold">
                         {selectedDate === getTodayString() ? '今天' : selectedDate}
                          {' '}{new Date(selectedDate).toLocaleDateString('zh-CN', { weekday: 'long' })}
@@ -600,7 +599,7 @@ const AppContent: React.FC = () => {
               </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-2 landscape:pt-0 scrollbar-hide min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-14 pt-0 scrollbar-hide min-h-0">
               
               {viewMode === 'calendar' ? (
                   <CalendarView 
@@ -666,7 +665,7 @@ const AppContent: React.FC = () => {
                                         <i className={`fa-solid fa-${typeDef.icon} text-lg landscape:text-xs`}></i>
                                     </div>
 
-                                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="absolute right-2 top-2 flex gap-1 opacity-100 transition-opacity">
                                         <button 
                                             type="button"
                                             onClick={(e) => { e.stopPropagation(); setEditingReminder(reminder); setIsManualModalOpen(true); }}

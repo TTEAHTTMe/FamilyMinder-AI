@@ -38,11 +38,16 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   }, []);
 
   const handleUnlockAudio = () => {
+      // 1. Play beep to unlock AudioContext
       if (audioRef.current) {
           audioRef.current.play().then(() => setIsAudioLocked(false)).catch(e => alert("无法播放声音"));
       }
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-          const msg = new SpeechSynthesisUtterance('');
+      
+      // 2. Play silent utterance to unlock SpeechSynthesis and warm it up
+      if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const msg = new SpeechSynthesisUtterance(' '); // Empty space to warm up
+          msg.volume = 0;
           window.speechSynthesis.speak(msg);
       }
   };
@@ -88,7 +93,8 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
             body: JSON.stringify({
                 model: voiceSettings.model || 'tts-1',
                 input: text,
-                voice: voiceSettings.voiceURI || 'alloy'
+                voice: voiceSettings.voiceURI || 'alloy',
+                speed: voiceSettings.rate // OpenAI supports speed 0.25 to 4.0
             })
         });
         if (!response.ok) throw new Error("TTS Failed");
@@ -121,15 +127,18 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
       }
 
       if (window.speechSynthesis && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
+          // IMPORTANT: Do NOT call cancel() here excessively, it kills the engine on Android
+          
           const msg = new SpeechSynthesisUtterance();
           msg.text = combinedText;
           msg.rate = voiceSettings.rate;
           msg.pitch = voiceSettings.pitch;
           msg.volume = voiceSettings.volume;
           msg.lang = 'zh-CN';
+          
           if (voiceSettings.voiceURI && voiceSettings.provider !== 'openai') {
-            const voice = window.speechSynthesis.getVoices().find(v => v.voiceURI === voiceSettings.voiceURI);
+            const voices = window.speechSynthesis.getVoices();
+            const voice = voices.find(v => v.voiceURI === voiceSettings.voiceURI);
             if (voice) msg.voice = voice;
           }
           
@@ -137,16 +146,29 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
           msg.onend = () => { if (audioRef.current) audioRef.current.volume = 1.0; };
           msg.onerror = () => { if (audioRef.current) audioRef.current.volume = 1.0; };
           
+          // Global ref hack to prevent Garbage Collection on Chrome/Android
           (window as any).currentUtterance = msg;
+          
           window.speechSynthesis.speak(msg);
       }
     };
 
     if (!isAudioLocked) speak();
-    const interval = setInterval(() => { if(!isAudioLocked) { speak(); setTicks(t => t + 1); } }, 15000); 
+    
+    // Repeat logic - speak every 10 seconds
+    const interval = setInterval(() => { 
+        if(!isAudioLocked) { 
+            speak(); 
+            setTicks(t => t + 1); 
+        } 
+    }, 10000); 
+
     return () => {
         clearInterval(interval);
-        if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+        // Only cancel when the alarm overlay is actually closed/unmounted
+        if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+        }
     };
   }, [reminders, users, voiceSettings, isAudioLocked]);
 
@@ -156,7 +178,7 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-red-600/90 backdrop-blur-sm animate-pulse-ring p-4 landscape:p-2">
       {isAudioLocked && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[310]">
-              <button onClick={handleUnlockAudio} className="bg-white text-red-600 px-6 py-2 rounded-full font-bold shadow-lg animate-bounce">
+              <button onClick={handleUnlockAudio} className="bg-white text-red-600 px-6 py-2 rounded-full font-bold shadow-lg animate-bounce border-2 border-red-100">
                   🔊 点击启用声音
               </button>
           </div>
