@@ -242,7 +242,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({ currentUser, users, onAddRemind
         {isOpen && (
             <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in">
                 {/* Modal Container: Full height on mobile landscape, centered on desktop */}
-                <div className="bg-slate-100 w-full md:w-[500px] h-[90vh] landscape:h-full md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative landscape:left-16">
+                <div className="bg-slate-100 w-full md:w-[500px] h-[90vh] landscape:h-full md:h-[700px] rounded-t-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-slide-up relative landscape:left-16 landscape:w-[calc(100%-4rem)]">
                     <div className="bg-white px-4 py-2 shadow-sm flex items-center justify-between flex-shrink-0 z-10 border-b border-slate-100">
                         <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><i className="fa-solid fa-robot text-sm"></i></div>

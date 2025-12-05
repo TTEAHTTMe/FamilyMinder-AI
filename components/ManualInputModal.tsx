@@ -11,6 +11,7 @@ interface ManualInputModalProps {
   currentUser: User;
   initialData?: Reminder;
   reminderTypes: ReminderTypeDefinition[];
+  onManageTypes: () => void;
 }
 
 const ManualInputModal: React.FC<ManualInputModalProps> = ({ 
@@ -20,21 +21,27 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
   users, 
   currentUser,
   initialData,
-  reminderTypes
+  reminderTypes,
+  onManageTypes
 }) => {
   const [title, setTitle] = useState('');
-  const [time, setTime] = useState('');
   const [date, setDate] = useState('');
   const [selectedUserId, setSelectedUserId] = useState(currentUser.id);
   const [type, setType] = useState<string>('general');
   const [recurrence, setRecurrence] = useState<Reminder['recurrence']>('once');
+  
+  // Time selectors
+  const [hour, setHour] = useState('08');
+  const [minute, setMinute] = useState('00');
 
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
         // Edit mode
         setTitle(initialData.title);
-        setTime(initialData.time);
+        const [h, m] = initialData.time.split(':');
+        setHour(h || '08');
+        setMinute(m || '00');
         setDate(initialData.date || getTodayString());
         setSelectedUserId(initialData.userId);
         setType(initialData.type);
@@ -43,8 +50,8 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
         // Create mode
         setTitle('');
         const now = new Date();
-        const timeString = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-        setTime(timeString);
+        setHour(String(now.getHours()).padStart(2, '0'));
+        setMinute(String(now.getMinutes()).padStart(2, '0'));
         setDate(getTodayString());
         if (currentUser.id === 'all' && users.length > 0) {
             setSelectedUserId(users[0].id);
@@ -57,37 +64,13 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
     }
   }, [isOpen, initialData, currentUser, users, reminderTypes]);
 
-  // Smart time formatting logic (User types 0830 -> 08:30)
-  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      let val = e.target.value.replace(/[^0-9]/g, ''); // Remove non-digits
-      if (val.length > 4) val = val.substring(0, 4);
-
-      if (val.length > 2) {
-          val = val.substring(0, 2) + ':' + val.substring(2);
-      }
-      setTime(val);
-  };
-
-  const handleTimeBlur = () => {
-      // Basic validation on blur to ensure valid time format
-      if (time.length === 5 && !time.includes(':')) return;
-      if (time.length < 5 && time.length > 0) {
-           // Pad simple cases like "8:30" to "08:30"
-           if (time.indexOf(':') === 1) setTime('0' + time);
-           else if (time.length === 4 && !time.includes(':')) setTime(time.substring(0,2) + ':' + time.substring(2));
-      }
-  };
-
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !time || !date) return;
-    // Simple time validation
-    if (!time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
-        alert("时间格式错误，请输入 HH:MM (例如 08:30)");
-        return;
-    }
+    if (!title || !date) return;
+    
+    const time = `${hour}:${minute}`;
 
     onSave({
       title,
@@ -100,6 +83,9 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
     });
     onClose();
   };
+
+  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 landscape:p-2 animate-fade-in">
@@ -152,17 +138,24 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">时间 (HH:MM)</label>
-                        <input
-                            type="text"
-                            inputMode="numeric"
-                            value={time}
-                            onChange={handleTimeChange}
-                            onBlur={handleTimeBlur}
-                            placeholder="08:00"
-                            className="w-full px-2 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
-                            required
-                        />
+                        <label className="block text-xs font-medium text-slate-500 mb-1">时间</label>
+                        <div className="flex gap-1">
+                            <select 
+                                value={hour} 
+                                onChange={(e) => setHour(e.target.value)}
+                                className="flex-1 px-1 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm text-center"
+                            >
+                                {hours.map(h => <option key={h} value={h}>{h}</option>)}
+                            </select>
+                            <span className="self-center font-bold text-slate-400">:</span>
+                            <select 
+                                value={minute} 
+                                onChange={(e) => setMinute(e.target.value)}
+                                className="flex-1 px-1 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm text-center"
+                            >
+                                {minutes.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -185,7 +178,10 @@ const ManualInputModal: React.FC<ManualInputModalProps> = ({
                 </div>
 
                 <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-500 mb-1">类型</label>
+                    <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-medium text-slate-500">类型</label>
+                        <button type="button" onClick={onManageTypes} className="text-xs text-blue-600 hover:text-blue-800"><i className="fa-solid fa-gear"></i> 管理</button>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                         {reminderTypes.map((t) => (
                             <button

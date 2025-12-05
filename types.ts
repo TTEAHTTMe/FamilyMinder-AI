@@ -51,7 +51,7 @@ export interface VoiceSettings {
   model?: string; // For OpenAI, e.g. 'tts-1'
 }
 
-export type AIProvider = 'gemini' | 'deepseek' | 'moonshot' | 'siliconflow' | 'custom';
+export type AIProvider = 'gemini' | 'deepseek' | 'moonshot' | 'siliconflow' | 'custom' | 'openai';
 
 export interface AIConfig {
   apiKey: string;

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, ErrorInfo } from 'react';
 import { MOCK_USERS, INITIAL_REMINDERS, ALARM_SOUND_DATA_URI, getTodayString, DEFAULT_REMINDER_TYPES } from './constants';
 import { User, Reminder, VoiceSettings, AISettings, AIProvider, CloudSettings, ReminderTypeDefinition } from './types';
@@ -80,7 +81,7 @@ interface ConfirmModalProps {
 const ConfirmModal: React.FC<ConfirmModalProps> = ({ isOpen, title, message, onConfirm, onCancel }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[310] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scale-in border border-slate-100">
         <h3 className="text-xl font-bold text-slate-800 mb-2">{title}</h3>
         <p className="text-slate-600 mb-6">{message}</p>
@@ -167,6 +168,7 @@ const AppContent: React.FC = () => {
             deepseek: { apiKey: '', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
             moonshot: { apiKey: '', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
             siliconflow: { apiKey: '', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct' },
+            openai: { apiKey: '', baseUrl: 'https://api.openai.com/v1', model: 'gpt-3.5-turbo' },
             custom: { apiKey: '', baseUrl: 'http://localhost:11434/v1', model: 'llama3' }
         }
     };
@@ -210,6 +212,7 @@ const AppContent: React.FC = () => {
   const [activeReminders, setActiveReminders] = useState<Reminder[]>([]);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string>('family');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
@@ -308,19 +311,10 @@ const AppContent: React.FC = () => {
       const currentTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
       const currentFullDate = getTodayString();
       
-      // Unlock audio context on first user interaction if needed (handled by browser usually but good to persist)
-      
       const toTrigger = reminders.filter(r => {
-        // Only trigger if:
-        // 1. Not completed
-        // 2. Time matches
-        // 3. Date matches
-        // 4. Hasn't been triggered in the last 60 seconds
-        // 5. If snoozed, wait until snooze time
         if (r.isCompleted) return false;
-        if (r.date !== currentFullDate) return false; // Strict date check
+        if (r.date !== currentFullDate) return false;
         
-        // Snooze logic
         if (r.snoozeUntil) {
              if (now.getTime() < r.snoozeUntil) return false;
         } else {
@@ -332,7 +326,6 @@ const AppContent: React.FC = () => {
       });
 
       if (toTrigger.length > 0) {
-        // Update lastRemindedAt
         const nowTs = Date.now();
         const updatedReminders = reminders.map(r => 
            toTrigger.find(tr => tr.id === r.id) 
@@ -341,7 +334,6 @@ const AppContent: React.FC = () => {
         );
         setReminders(updatedReminders);
         
-        // Add to active alarms if not already there
         setActiveReminders(prev => {
             const newIds = toTrigger.map(t => t.id);
             const existingIds = prev.map(p => p.id);
@@ -367,7 +359,6 @@ const AppContent: React.FC = () => {
           case 'monthly': next.setMonth(next.getMonth() + 1); break;
           case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
       }
-      // Formatting
       const y = next.getFullYear();
       const m = String(next.getMonth() + 1).padStart(2, '0');
       const d = String(next.getDate()).padStart(2, '0');
@@ -386,9 +377,13 @@ const AppContent: React.FC = () => {
     const reminder = reminders.find(r => r.id === id);
     if (!reminder) return;
     
-    // Safety check for speech
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-        if ('speechSynthesis' in window) {
+    // Allow unchecking
+    if (reminder.isCompleted) {
+         setReminders(reminders.map(r => r.id === id ? { ...r, isCompleted: false } : r));
+         return;
+    }
+
+    if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) {
              window.speechSynthesis.cancel();
              const remaining = activeReminders.filter(r => r.id !== id);
              if (remaining.length === 0) {
@@ -396,12 +391,11 @@ const AppContent: React.FC = () => {
                  msg.lang = 'zh-CN';
                  window.speechSynthesis.speak(msg);
              }
-        }
     }
 
-    // Logic for Recurrence
     let newReminders = reminders.map(r => r.id === id ? { ...r, isCompleted: true } : r);
     
+    // Only generate next if checking (completing)
     if (reminder.recurrence && reminder.recurrence !== 'once') {
         const nextInstance = handleNextOccurrence(reminder);
         if (nextInstance) newReminders.push(nextInstance);
@@ -415,13 +409,11 @@ const AppContent: React.FC = () => {
     const snoozeTime = Date.now() + durationMinutes * 60 * 1000;
     
     if (id) {
-        // Snooze specific reminder
         setReminders(reminders.map(r => 
             r.id === id ? { ...r, snoozeUntil: snoozeTime } : r
         ));
         setActiveReminders(activeReminders.filter(r => r.id !== id));
     } else {
-        // Snooze ALL active
         const activeIds = activeReminders.map(r => r.id);
         setReminders(reminders.map(r => 
             activeIds.includes(r.id) ? { ...r, snoozeUntil: snoozeTime } : r
@@ -452,7 +444,6 @@ const AppContent: React.FC = () => {
   const switchUser = (user: User) => {
     setCurrentUser(user);
     setViewMode('user');
-    // Scroll logic
     setTimeout(() => {
         if (avatarRefs.current[user.id]) {
             avatarRefs.current[user.id]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
@@ -465,10 +456,6 @@ const AppContent: React.FC = () => {
       setCurrentUser({ id: 'all', name: '全家人', avatar: '🏠', color: 'bg-slate-500' });
   };
 
-  // Filter Logic:
-  // 1. Filter by Date (selectedDate)
-  // 2. Filter by User (unless Home mode)
-  // 3. Sort: Incomplete first, then by Time
   const filteredReminders = reminders
     .filter(r => r.date === selectedDate)
     .filter(r => viewMode === 'home' ? true : r.userId === currentUser.id)
@@ -480,7 +467,6 @@ const AppContent: React.FC = () => {
   const changeDate = (offset: number) => {
       const d = new Date(selectedDate);
       d.setDate(d.getDate() + offset);
-      // Format YYYY-MM-DD manually to avoid UTC issues
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
@@ -493,12 +479,6 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row h-screen overflow-hidden">
       
-      {/* 
-        NAVIGATION SIDEBAR / TOPBAR 
-        Optimization for Landscape Mobile (Kiosk):
-        - Sidebar moves to LEFT on landscape (md:flex-col landscape:flex-col)
-        - Width reduced on landscape (w-16)
-      */}
       <nav className={`
         flex-shrink-0 z-30 bg-white shadow-xl relative transition-all duration-300
         flex flex-row md:flex-col landscape:flex-col
@@ -508,13 +488,11 @@ const AppContent: React.FC = () => {
         border-b md:border-b-0 md:border-r border-slate-100
       `}>
           
-          {/* Custom Border Layer to hide seams */}
           <div className="absolute top-0 bottom-0 right-0 w-px bg-slate-200 hidden md:block landscape:block z-0"></div>
 
-          {/* Fixed Section: Settings & Home */}
           <div className="flex md:flex-col landscape:flex-col items-center w-auto md:w-full landscape:w-full p-2 md:p-0 landscape:p-0 gap-2 md:gap-4 landscape:gap-2">
                <button 
-                  onClick={() => setIsSettingsModalOpen(true)}
+                  onClick={() => { setSettingsInitialTab('family'); setIsSettingsModalOpen(true); }}
                   className="w-10 h-10 md:w-12 md:h-12 landscape:w-8 landscape:h-8 rounded-2xl bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 flex items-center justify-center transition-colors my-2 md:mt-6 landscape:mt-2 mx-auto"
                 >
                   <i className="fa-solid fa-gear text-lg landscape:text-sm"></i>
@@ -522,19 +500,17 @@ const AppContent: React.FC = () => {
                
                <div className="w-px h-8 bg-slate-200 md:w-8 md:h-px landscape:w-6 landscape:h-px"></div>
 
-               {/* Home Button */}
                <div className="relative w-full flex justify-center">
                     <button 
                         onClick={goHome}
                         className={`
-                            relative z-10 w-12 h-12 md:w-16 md:h-16 landscape:w-12 landscape:h-12 flex flex-col items-center justify-center transition-all duration-300
+                            relative z-20 w-12 h-12 md:w-16 md:h-16 landscape:w-12 landscape:h-12 flex flex-col items-center justify-center transition-all duration-300
                             ${viewMode === 'home' ? 'text-slate-700 scale-110' : 'text-slate-300 hover:text-slate-500 scale-100'}
                         `}
                     >
                         <span className="text-2xl md:text-3xl landscape:text-xl drop-shadow-sm">🏠</span>
                         {viewMode === 'home' && <span className="text-[10px] font-bold mt-1 text-slate-600 landscape:hidden">全家</span>}
                     </button>
-                     {/* Active Tab Background Logic for Home */}
                     {viewMode === 'home' && (
                         <div className={`
                             absolute z-10 bg-slate-50
@@ -549,7 +525,6 @@ const AppContent: React.FC = () => {
                </div>
           </div>
 
-          {/* Scrollable User List */}
           <div className="flex-1 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto landscape:overflow-y-auto scrollbar-hide w-full flex flex-row md:flex-col landscape:flex-col items-center gap-3 md:gap-6 landscape:gap-2 px-4 md:px-0 landscape:px-0 py-2 md:py-4 landscape:py-2">
              {users.map(user => {
                  const isActive = viewMode === 'user' && currentUser.id === user.id;
@@ -567,7 +542,6 @@ const AppContent: React.FC = () => {
                             {user.avatar}
                         </button>
                         
-                        {/* Name Label */}
                         <span className={`
                             absolute -bottom-4 md:bottom-auto md:top-1 landscape:hidden md:left-14 md:ml-2 
                             text-[10px] font-bold bg-slate-800 text-white px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none
@@ -575,7 +549,6 @@ const AppContent: React.FC = () => {
                             {user.name}
                         </span>
                         
-                        {/* Persistent Name Label for mobile/tablet */}
                         <span className={`
                            absolute -bottom-5 text-[9px] font-bold text-slate-400 w-full text-center truncate px-1
                            md:hidden landscape:hidden
@@ -584,7 +557,6 @@ const AppContent: React.FC = () => {
                             {user.name}
                         </span>
 
-                        {/* Active Tab Background Logic for Users */}
                         {isActive && (
                             <div className={`
                                 absolute z-10 
@@ -615,7 +587,7 @@ const AppContent: React.FC = () => {
               <div>
                   <h1 className="text-3xl landscape:text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
                       {viewMode === 'home' ? (
-                          <><span>🏡</span> <span>温馨家庭</span></>
+                          <><span>📅</span> <span>智能日程</span></>
                       ) : (
                           <><span>{currentUser.avatar}</span> <span>{currentUser.name}的提醒</span></>
                       )}
@@ -626,14 +598,12 @@ const AppContent: React.FC = () => {
                          {' '}{new Date(selectedDate).toLocaleDateString('zh-CN', { weekday: 'long' })}
                       </p>
                       
-                      {/* Date Navigation */}
                       <div className="flex bg-white rounded-lg shadow-sm border border-slate-100 p-0.5">
                           <button onClick={() => changeDate(-1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-left landscape:text-xs"></i></button>
                           <button onClick={() => setSelectedDate(getTodayString())} className="px-3 landscape:px-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded">今天</button>
                           <button onClick={() => changeDate(1)} className="w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center hover:bg-slate-50 rounded text-slate-400"><i className="fa-solid fa-chevron-right landscape:text-xs"></i></button>
                       </div>
 
-                      {/* Calendar Toggle */}
                       <button 
                          onClick={() => setViewMode(viewMode === 'calendar' ? 'home' : 'calendar')}
                          className={`w-8 h-8 landscape:w-6 landscape:h-6 flex items-center justify-center rounded-lg border transition-colors ${viewMode === 'calendar' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
@@ -644,7 +614,6 @@ const AppContent: React.FC = () => {
               </div>
           </header>
 
-          {/* Content Body */}
           <div className="flex-1 overflow-y-auto px-6 landscape:px-4 pb-24 landscape:pb-16 scrollbar-hide">
               
               {viewMode === 'calendar' ? (
@@ -676,7 +645,6 @@ const AppContent: React.FC = () => {
                                         flex items-center gap-4 landscape:gap-3
                                     `}
                                 >
-                                    {/* Checkbox */}
                                     <button 
                                         onClick={() => toggleComplete(reminder.id)}
                                         className={`
@@ -687,7 +655,6 @@ const AppContent: React.FC = () => {
                                         <i className="fa-solid fa-check text-sm landscape:text-xs"></i>
                                     </button>
 
-                                    {/* Time & Content */}
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 mb-0.5">
                                             <span className="font-mono font-bold text-xl landscape:text-lg text-slate-700">{reminder.time}</span>
@@ -709,12 +676,10 @@ const AppContent: React.FC = () => {
                                         </h3>
                                     </div>
 
-                                    {/* Type Icon */}
                                     <div className={`w-10 h-10 landscape:w-8 landscape:h-8 rounded-xl ${typeDef.color} bg-opacity-10 flex items-center justify-center text-${typeDef.color.replace('bg-', '')}-600`}>
                                         <i className={`fa-solid fa-${typeDef.icon} text-lg landscape:text-sm`}></i>
                                     </div>
 
-                                    {/* Edit/Delete Actions (Hover/Focus) */}
                                     <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button 
                                             type="button"
@@ -767,6 +732,7 @@ const AppContent: React.FC = () => {
         currentUser={currentUser}
         initialData={editingReminder || undefined}
         reminderTypes={reminderTypes}
+        onManageTypes={() => { setSettingsInitialTab('types'); setIsSettingsModalOpen(true); setIsManualModalOpen(false); }}
       />
 
       <SettingsModal
@@ -784,9 +750,9 @@ const AppContent: React.FC = () => {
         setCloudSettings={setCloudSettings}
         reminderTypes={reminderTypes}
         setReminderTypes={setReminderTypes}
+        initialTab={settingsInitialTab}
       />
 
-      {/* Custom Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={!!deleteTargetId}
         title="确认删除"
@@ -799,7 +765,6 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Main App Component with Error Boundary
 const App: React.FC = () => {
   return (
     <ErrorBoundary>

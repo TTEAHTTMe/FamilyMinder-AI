@@ -39,13 +39,22 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
   }, [onSnooze]);
 
   const speakTextOpenAI = async (text: string) => {
-      const activeConfig = aiSettings.configs[aiSettings.activeProvider] || aiSettings.configs.gemini;
-      const apiKey = activeConfig.apiKey;
+      // Prioritize "openai" specific config, otherwise fallback to active provider (if compatible)
+      const ttsConfig = aiSettings.configs['openai'] || aiSettings.configs[aiSettings.activeProvider];
+      const apiKey = ttsConfig?.apiKey;
+      
       // Simple fallback if no key
-      if (!apiKey) return false;
+      if (!apiKey) {
+          console.warn("OpenAI TTS selected but no API Key found in OpenAI or Active settings.");
+          return false;
+      }
+
+      const rawBaseUrl = ttsConfig.baseUrl || 'https://api.openai.com/v1';
+      const cleanBaseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+      const url = `${cleanBaseUrl}/audio/speech`;
 
       try {
-        const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
@@ -57,14 +66,17 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
                 voice: voiceSettings.voiceURI || 'alloy'
             })
         });
-        if (!response.ok) throw new Error('TTS Failed');
+        if (!response.ok) {
+             const errorText = await response.text();
+             throw new Error(`TTS Failed: ${response.status} ${errorText}`);
+        }
         const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play();
+        const blobUrl = URL.createObjectURL(blob);
+        const audio = new Audio(blobUrl);
+        await audio.play();
         return true;
       } catch (e) {
-          console.error(e);
+          console.error("OpenAI TTS Error:", e);
           return false;
       }
   };
@@ -77,19 +89,19 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
       reminders.forEach(r => {
           const u = users.find(user => user.id === r.userId);
           const userName = u ? u.name : '家人';
-          combinedText += `${userName}，时间到了，请${r.title}。`;
+          combinedText += `${userName}，请${r.title}。`;
       });
-      combinedText += "请尽快确认。";
+      // Removed the repetitive "Please confirm ASAP" suffix here to reduce annoyance
 
       // OpenAI TTS Path
       if (voiceSettings.provider === 'openai') {
           if (audioRef.current) audioRef.current.volume = 0.2;
           const success = await speakTextOpenAI(combinedText);
           if (success) {
-             // If OpenAI TTS plays, we rely on its duration. 
-             // Logic to restore volume would need a duration check, simplifying here.
+             // If OpenAI TTS plays successfully, we return and don't play browser TTS
              return; 
           }
+          // If OpenAI TTS failed (returned false), fall through to Browser TTS
       }
 
       // Browser Fallback
@@ -117,17 +129,17 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
     };
 
     speak();
-    const interval = setInterval(() => { speak(); setTicks(t => t + 1); }, 8000); 
+    const interval = setInterval(() => { speak(); setTicks(t => t + 1); }, 15000); // Increased interval to 15s
     return () => {
         clearInterval(interval);
-        if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+        if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     };
   }, [reminders, users, voiceSettings]);
 
   if (reminders.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-red-600/90 backdrop-blur-sm animate-pulse-ring p-4 landscape:p-2">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-red-600/90 backdrop-blur-sm animate-pulse-ring p-4 landscape:p-2">
       {/* Container: Flex Column on Portrait, Flex Row on Landscape (Redmi 3 optimization) */}
       <div className="bg-white rounded-3xl landscape:rounded-xl p-6 landscape:p-2 max-w-md landscape:max-w-2xl w-full shadow-2xl scale-100 max-h-[85vh] landscape:max-h-[95vh] flex flex-col landscape:flex-row gap-4 landscape:gap-2">
         
@@ -137,7 +149,7 @@ const AlarmOverlay: React.FC<AlarmOverlayProps> = ({ reminders, users, onComplet
             <h2 className="text-3xl landscape:text-lg font-bold text-slate-800 leading-tight">
                 {reminders.length > 1 ? `${reminders.length} 个提醒` : '时间到'}
             </h2>
-            <p className="text-xs text-slate-400 mt-1 mb-2">请尽快确认</p>
+            <p className="text-xs text-slate-400 mt-1 mb-2">请确认</p>
             
             {/* Global Snooze */}
             <div className="mt-2 landscape:mt-1">

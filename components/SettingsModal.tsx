@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User, VoiceSettings, AISettings, AIProvider, Reminder, CloudSettings, ReminderTypeDefinition } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -18,6 +19,7 @@ interface SettingsModalProps {
   setCloudSettings: (settings: CloudSettings) => void;
   reminderTypes: ReminderTypeDefinition[];
   setReminderTypes: (types: ReminderTypeDefinition[]) => void;
+  initialTab?: string;
 }
 
 const AVATAR_OPTIONS = ['👴', '👵', '👨', '👩', '👶', '👦', '👧', '👱', '👱‍♀️', '😺', '🐶', '🤖', '👾'];
@@ -41,7 +43,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   cloudSettings,
   setCloudSettings,
   reminderTypes,
-  setReminderTypes
+  setReminderTypes,
+  initialTab
 }) => {
   const [activeTab, setActiveTab] = useState<'family' | 'types' | 'voice' | 'ai' | 'data' | 'cloud'>('family');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -51,17 +54,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadVoices = () => {
-      if (typeof window === 'undefined' || !window.speechSynthesis) return;
-      const voices = window.speechSynthesis.getVoices();
-      const zhVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN'));
-      setAvailableVoices(zhVoices.length > 0 ? zhVoices : voices);
-    };
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      if (isOpen && initialTab) {
+          setActiveTab(initialTab as any);
+      }
+  }, [isOpen, initialTab]);
+
+  const loadVoices = () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis || !('speechSynthesis' in window)) return;
+    const voices = window.speechSynthesis.getVoices();
+    const zhVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN'));
+    setAvailableVoices(zhVoices.length > 0 ? zhVoices : voices);
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) {
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
     }
-    return () => { if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null; };
+    return () => { if (typeof window !== 'undefined' && window.speechSynthesis && 'speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = null; };
   }, []);
 
   useEffect(() => {
@@ -118,7 +128,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleTestVoice = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    if (typeof window === 'undefined' || !window.speechSynthesis || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const msg = new SpeechSynthesisUtterance("测试语音");
     msg.lang = 'zh-CN';
@@ -308,16 +318,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               {voiceSettings.provider !== 'openai' ? (
                 <>
-                  <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}>
-                       {availableVoices.length === 0 && <option value="">默认</option>}
-                       {availableVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
-                  </select>
+                  <div className="flex gap-2">
+                      <select className="flex-1 p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.voiceURI} onChange={(e) => setVoiceSettings({...voiceSettings, voiceURI: e.target.value})}>
+                           {availableVoices.length === 0 && <option value="">默认</option>}
+                           {availableVoices.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name}</option>)}
+                      </select>
+                      <button onClick={loadVoices} className="px-3 bg-slate-100 rounded text-slate-500 hover:bg-slate-200"><i className="fa-solid fa-rotate"></i></button>
+                  </div>
                   <div><label className="text-xs font-bold text-slate-500">语速 {voiceSettings.rate}</label><input type="range" min="0.5" max="2" step="0.1" value={voiceSettings.rate} onChange={(e) => setVoiceSettings({...voiceSettings, rate: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg"/></div>
                   <div><label className="text-xs font-bold text-slate-500">音调 {voiceSettings.pitch}</label><input type="range" min="0.5" max="2" step="0.1" value={voiceSettings.pitch} onChange={(e) => setVoiceSettings({...voiceSettings, pitch: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-200 rounded-lg"/></div>
                 </>
               ) : (
                 <>
-                   <div className="text-xs text-slate-500 mb-2">使用 AI 设置中的 API Key</div>
+                   <div className="text-xs text-slate-500 mb-2">使用 AI 设置中的 OpenAI API Key</div>
                    <div>
                        <label className="text-xs font-bold text-slate-500">模型</label>
                        <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm" value={voiceSettings.model || 'tts-1'} onChange={(e) => setVoiceSettings({...voiceSettings, model: e.target.value})}>
@@ -339,29 +352,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {activeTab === 'ai' && (
              <div className="space-y-4 landscape:grid landscape:grid-cols-2 landscape:gap-4 landscape:space-y-0">
-                 <div className="col-span-2 grid grid-cols-4 gap-2">
-                     {['gemini', 'deepseek', 'moonshot', 'siliconflow'].map((p: any) => (
+                 <div className="col-span-2 flex flex-wrap gap-2">
+                     {['gemini', 'deepseek', 'moonshot', 'siliconflow', 'openai', 'custom'].map((p: any) => (
                          <button key={p} onClick={() => handleProviderChange(p)} className={`p-2 rounded border text-xs font-bold ${aiSettings.activeProvider === p ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200'}`}>{p}</button>
                      ))}
                  </div>
-                 <div className="col-span-2">
-                     {aiSettings.activeProvider !== 'gemini' && (
-                        <>
-                            <label className="text-xs font-bold text-slate-500">API Key</label>
-                            <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
-                        </>
-                     )}
-                     {aiSettings.activeProvider === 'gemini' && (
-                         <div className="p-2 bg-blue-50 text-blue-700 rounded text-xs">
-                             Gemini API Key is configured via system environment.
-                         </div>
-                     )}
-                 </div>
-                 {aiSettings.activeProvider !== 'gemini' && (
+                 
+                 {aiSettings.activeProvider === 'gemini' ? (
+                     <div className="col-span-2">
+                        <label className="text-xs font-bold text-slate-500">API Key</label>
+                        <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                    </div>
+                 ) : (
+                    <div className="col-span-2">
+                        <label className="text-xs font-bold text-slate-500">API Key</label>
+                        <input type="password" value={currentConfig.apiKey} onChange={(e) => updateAiConfig('apiKey', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded text-sm" />
+                    </div>
+                 )}
+
+                 {aiSettings.activeProvider !== 'gemini' && aiSettings.activeProvider !== 'openai' && (
                     <>
                     <div><label className="text-xs font-bold text-slate-500">Base URL</label><input type="text" value={currentConfig.baseUrl} onChange={(e) => updateAiConfig('baseUrl', e.target.value)} className="w-full p-2 border rounded text-xs" /></div>
                     <div><label className="text-xs font-bold text-slate-500">Model</label><input type="text" value={currentConfig.model} onChange={(e) => updateAiConfig('model', e.target.value)} className="w-full p-2 border rounded text-xs" /></div>
                     </>
+                 )}
+                 {aiSettings.activeProvider === 'openai' && (
+                    <div className="text-xs text-slate-500 col-span-2">配置此 Key 用于 Chat (GPT) 或 TTS (语音合成)。</div>
                  )}
              </div>
           )}
